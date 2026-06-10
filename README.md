@@ -22,7 +22,7 @@ generated/meshes/*.stl                         连杆网格文件
 generated/step/*.step                          CAD STEP 文件
 generated/face_screen_arm.FCStd                FreeCAD 源文件
 scripts/                                       生成、导入和修正脚本
-*.m                                            MATLAB 分析与演示脚本
+test/*.m                                       MATLAB 分析与演示脚本
 ```
 
 ## 初始位姿
@@ -45,11 +45,12 @@ J4 = 30 mm
 
 ### MATLAB
 
-项目提供了多个 MATLAB 演示与分析脚本，可直接在项目根目录运行。
+项目提供了多个 MATLAB 演示与分析脚本，统一放在 `test/` 目录中。
 
 打开 URDF 并显示机械臂：
 
 ```matlab
+addpath("test")
 open_face_screen_arm_matlab("home")
 ```
 
@@ -66,11 +67,11 @@ far
 其他常用脚本：
 
 ```text
-demo_face_screen_arm_joint_sliders.m
-demo_face_screen_arm_motion_loop.m
-demo_face_screen_arm_target_pose.m
-analyze_face_screen_arm_workspace.m
-analyze_face_screen_arm_face_shell.m
+test/demo_face_screen_arm_joint_sliders.m
+test/demo_face_screen_arm_motion_loop.m
+test/demo_face_screen_arm_target_pose.m
+test/analyze_face_screen_arm_workspace.m
+test/analyze_face_screen_arm_face_shell.m
 ```
 
 ### FreeCAD 生成模型
@@ -89,4 +90,3 @@ scripts/generate_face_screen_arm.py
 - `matlab_open_face_screen_arm.log` 等运行日志不会提交到仓库。
 - CoppeliaSim 场景中可见机器人底座相对桌面有约 `1 mm` 的轻微预压，用于避免渲染间隙。
 - MATLAB 脚本依赖 `importrobot` 等机器人相关功能，通常需要 Robotics System Toolbox。
-

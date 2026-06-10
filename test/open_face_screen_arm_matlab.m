@@ -7,7 +7,7 @@ else
     poseName = lower(string(poseName));
 end
 
-projectRoot = fileparts(mfilename("fullpath"));
+projectRoot = fileparts(fileparts(mfilename("fullpath")));
 urdfPath = fullfile(projectRoot, "generated", "urdf", "face_screen_support_arm.urdf");
 
 robot = importrobot(urdfPath);

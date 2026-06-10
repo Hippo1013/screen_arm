@@ -29,7 +29,7 @@ end
 
 rng(seed, "twister");
 
-projectRoot = fileparts(mfilename("fullpath"));
+projectRoot = fileparts(fileparts(mfilename("fullpath")));
 urdfPath = fullfile(projectRoot, "generated", "urdf", "face_screen_support_arm.urdf");
 endEffector = "screen_center";
 
