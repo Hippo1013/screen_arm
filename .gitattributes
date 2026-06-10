@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.png binary
+*.mat binary
+*.ttt binary
+*.ttm binary
+*.FCStd binary
+*.stl binary
+
