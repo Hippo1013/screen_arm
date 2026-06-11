@@ -469,3 +469,85 @@ urdfPath = fullfile(projectRoot, "generated", "urdf", "face_screen_support_arm_d
 - MATLAB `importrobot` 导入 `face_screen_support_arm.urdf` 和 `face_screen_support_arm_depth_camera.urdf`。
 - MATLAB `show(robot, homeConfiguration(robot), ...)` 无窗口显示验证。
 - MATLAB `checkcode('screen_arm/test/demo_face_screen_arm_joint_sliders.m')` 无输出问题。
+
+## 2026-06-11 阶段更新：固定人脸中心的视线方向 IK 轨迹测试
+
+本阶段围绕“用户头部中心固定、视线方向变化、屏幕保持合适距离并正对人脸”的仿真验证，新增了根目录测试脚本：
+
+- `test/demo_face_view_target_ik_trajectory.m`
+
+脚本用途：
+
+- 导入当前带办公桌和深度相机的新模型：`screen_arm/generated/urdf/face_screen_support_arm_depth_camera.urdf`。
+- 固定测试人脸中心点：`[0.65, 0.00, 1.00] m`。
+- 使用 UI 控制人脸法向量方向：
+  - `Yaw about world Z`：左右偏摆。
+  - `Pitch about world Y`：上下俯仰。
+- 人脸法向量在图中仅作为可视化箭头，显示长度为 `0.15 m`。
+- 点击 `Plan + Move` 后再规划运动，不在拖动滑块时连续追踪。
+
+目标位姿约定：
+
+- 默认目标距离为 `0.45 m`。
+- 可接受距离容忍区间为 `[0.35, 0.55] m`。
+- 规划逻辑必须先尝试 `0.45 m` 标称点；只有标称点不可达时，才退化到 `[0.35, 0.55] m` 距离带内搜索可达目标。
+- 目标屏幕中心计算方式：
+
+```text
+p_screen_target = p_face_center + distance * n_face
+```
+
+- 屏幕朝向约束：`screen_center` 局部 `+X` 轴指向人脸中心，使屏幕平面垂直于人脸视线方向。
+- 不使用 Roll 控制；脚本通过世界 `Z` 轴投影构造屏幕姿态，使屏幕尽量保持竖直。
+
+逆运动学与轨迹规划实现：
+
+- 使用 MATLAB Robotics System Toolbox 的 `inverseKinematics`。
+- 当前 MATLAB 环境中默认求解器算法为 `BFGSGradientProjection`。
+- IK 目标末端为 `screen_center`。
+- IK 权重：`[0.7, 0.7, 0.7, 1, 1, 1]`。
+- 每次 IK 初值使用当前关节角 `state.q`，使相邻目标更倾向于得到连续解。
+- 可达判定主要看：
+  - 屏幕中心位置误差 `<= 0.025 m`。
+  - 屏幕法向误差 `<= 8 deg`。
+- 轨迹动画目前为关节空间三次平滑插值：
+
+```text
+s = 3 * t^2 - 2 * t^3
+q = q_start + (q_goal - q_start) * s
+```
+
+- 当前轨迹动画使用 `90` 帧，每帧约 `0.025 s`。
+
+不可达诊断：
+
+- 如果标称距离和容忍距离带内都不可达，UI 状态区会显示最佳失败目标的距离、位置误差、法向误差。
+- 脚本额外创建一个 `ikLoose`，其 `EnforceJointLimits = false`，仅用于诊断，不用于真实运动。
+- 诊断方式：用不强制关节限位的 IK 估计如果硬要达到该位姿，哪个关节最明显越界。
+- UI 会尝试指出：
+  - 哪个关节超限。
+  - 需要值与关节限制值。
+  - 主因更偏向 `yaw/pan` 偏摆限制、`pitch` 俯仰限制，还是 `telescopic` 伸缩距离限制。
+
+验证记录：
+
+- `matlab -batch "issues = checkcode('test/demo_face_view_target_ik_trajectory.m'); disp(issues)"`：无输出问题。
+- `matlab -batch "addpath('test'); demo_face_view_target_ik_trajectory('normal'); close all force"`：脚本可导入模型并完成初始绘图。
+- 默认方向规划：`0.45 m` 标称距离可达。
+- 极端 `[60, 35]` 方向：标称距离不可达时可退化到 `0.35 m` 并成功。
+- 极端 `[-60, -35]` 方向：触发不可达诊断，示例诊断为 `J3 Elbow pitch` 超过上限，主因归类为俯仰侧关节限制。
+
+## 2026-06-11 提交记录
+
+已将当前阶段变更提交并推送到 `origin/main`：
+
+- `84ae786 Add face view IK trajectory demo`
+  - 包含 `AGENT.md` 入库。
+  - 包含办公桌、深度相机、新 URDF、生成脚本和 `test/demo_face_view_target_ik_trajectory.m`。
+- `0299457 Update project README`
+  - 新增根目录 `README.md`，简要说明项目组成：`face_pose_module`、`screen_arm` 和 `test`。
+
+当前已知状态：
+
+- 以上为本次 `AGENT.md` 记录更新前已经完成并推送的提交记录。
+- 后续提交状态以 `git log` 和 `git status -sb` 为准。
