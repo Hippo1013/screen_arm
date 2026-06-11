@@ -19,7 +19,7 @@ else
 end
 
 projectRoot = fileparts(fileparts(mfilename("fullpath")));
-urdfPath = fullfile(projectRoot, "generated", "urdf", "face_screen_support_arm.urdf");
+urdfPath = fullfile(projectRoot, "generated", "urdf", "face_screen_support_arm_depth_camera.urdf");
 
 robot = importrobot(urdfPath);
 robot.DataFormat = "column";
@@ -89,8 +89,8 @@ jointDefs = struct( ...
         "J5 Screen pan", ...
         "J6 Screen pitch"}, ...
     "unit", {"deg", "deg", "deg", "mm", "deg", "deg"}, ...
-    "min", {-150, -180, -120, 0, -180, -60}, ...
-    "max", {150, 0, 150, 280, 180, 60});
+    "min", {-150, -200, -170, 0, -100, -60}, ...
+    "max", {150, 20, 170, 280, 100, 60});
 end
 
 function createControls(fig, panel)
@@ -291,6 +291,7 @@ end
 
 function redrawRobot(fig)
 state = guidata(fig);
+cameraState = captureAxesCamera(state.ax);
 
 show(state.robot, state.q, ...
     "Visuals", "on", ...
@@ -301,8 +302,35 @@ show(state.robot, state.q, ...
     "FastUpdate", true);
 
 setupAxes(state.ax, state.workspaceMode);
+restoreAxesCamera(state.ax, cameraState);
 title(state.ax, "Interactive joint control")
 drawnow limitrate
+end
+
+function cameraState = captureAxesCamera(ax)
+cameraState = [];
+if isempty(ax) || ~isvalid(ax) || isempty(ax.Children)
+    return
+end
+
+cameraState = struct( ...
+    "CameraPosition", ax.CameraPosition, ...
+    "CameraTarget", ax.CameraTarget, ...
+    "CameraUpVector", ax.CameraUpVector, ...
+    "CameraViewAngle", ax.CameraViewAngle, ...
+    "Projection", ax.Projection);
+end
+
+function restoreAxesCamera(ax, cameraState)
+if isempty(cameraState) || isempty(ax) || ~isvalid(ax)
+    return
+end
+
+ax.CameraPosition = cameraState.CameraPosition;
+ax.CameraTarget = cameraState.CameraTarget;
+ax.CameraUpVector = cameraState.CameraUpVector;
+ax.CameraViewAngle = cameraState.CameraViewAngle;
+ax.Projection = cameraState.Projection;
 end
 
 function q = displayValuesToConfig(displayValues)

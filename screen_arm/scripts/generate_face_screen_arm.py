@@ -301,6 +301,27 @@ def write_urdf():
   <material name="joint_sky_blue"><color rgba="0.529 0.808 0.922 1"/></material>
   <material name="screen_black"><color rgba="0 0 0 1"/></material>
   <material name="center_red"><color rgba="1 0 0 1"/></material>
+  <material name="office_desk_wood"><color rgba="0.62 0.42 0.24 1"/></material>
+
+  <link name="desk_link">
+    <visual name="office_desk">
+      <geometry><mesh filename="../meshes/office_desk.stl" scale="0.001 0.001 0.001"/></geometry>
+      <material name="office_desk_wood"/>
+    </visual>
+    <collision>
+      <geometry><mesh filename="../meshes/office_desk.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0.37" rpy="0 0 0"/>
+      <mass value="25.0"/>
+      <inertia ixx="4.3" ixy="0" ixz="0" iyy="1.4" iyz="0" izz="5.4"/>
+    </inertial>
+  </link>
+
+  <joint name="desk_to_arm_base" type="fixed">
+    <origin xyz="-0.150 0.000 0.740" rpy="0 0 0"/>
+    <parent link="desk_link"/><child link="base_link"/>
+  </joint>
 
   <link name="base_link">
     {visual_tag("base_disc", "neutral_gray")}
@@ -329,7 +350,7 @@ def write_urdf():
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <parent link="yaw_link"/><child link="upper_arm"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-3.14159" upper="0" effort="35" velocity="1.2"/>
+    <limit lower="-3.49066" upper="0.349066" effort="35" velocity="1.2"/>
   </joint>
   <link name="upper_arm">
     {visual_tag("upper_bar", "neutral_gray")}
@@ -343,7 +364,7 @@ def write_urdf():
     <origin xyz="{l1} 0 0" rpy="0 0 0"/>
     <parent link="upper_arm"/><child link="forearm"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-2.0944" upper="2.61799" effort="30" velocity="1.2"/>
+    <limit lower="-2.96706" upper="2.96706" effort="30" velocity="1.2"/>
   </joint>
   <link name="forearm">
     {visual_tag("forearm_bar", "neutral_gray")}
@@ -372,7 +393,7 @@ def write_urdf():
     <origin xyz="{wrist_x} 0 {pan_mount_z}" rpy="0 0 0"/>
     <parent link="telescopic_slider"/><child link="screen_pan_link"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-3.14159" upper="3.14159" effort="8" velocity="2.0"/>
+    <limit lower="-1.74533" upper="1.74533" effort="8" velocity="2.0"/>
   </joint>
   <link name="screen_pan_link">
     {visual_tag("pan_base_disc", "joint_sky_blue")}
