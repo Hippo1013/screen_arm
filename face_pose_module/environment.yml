@@ -1,0 +1,13 @@
+name: screen_arm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - pyrealsense2==2.58.1.10581
+      - mediapipe==0.10.35
+      - opencv-python==4.13.0.92
+      - numpy==2.4.6
+      - scipy==1.17.1
+      - pyyaml==6.0.3

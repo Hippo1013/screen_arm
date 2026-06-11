@@ -1,0 +1,110 @@
+camera:
+  depth_width: 1280
+  depth_height: 720
+  depth_fps: 30
+  depth_format: z16
+  color_width: 1280
+  color_height: 720
+  color_fps: 30
+  color_format: bgr8
+  align_depth_to_color: true
+  enable_infrared: false
+  enable_imu: true
+  imu_accel_fps: 63
+  imu_gyro_fps: 200
+  warmup_frames: 15
+  frame_timeout_ms: 5000
+
+mediapipe:
+  model_path: assets/face_landmarker.task
+  running_mode: video
+  num_faces: 1
+  min_face_detection_confidence: 0.5
+  min_face_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+  output_facial_transformation_matrixes: true
+  output_face_blendshapes: false
+
+geometry:
+  # MediaPipe Face Landmarker 常用人脸区域索引。
+  left_eye_indices: [33, 133, 159, 145, 153, 154, 155, 246]
+  right_eye_indices: [362, 263, 386, 374, 380, 381, 382, 466]
+  plane_indices:
+    - 1
+    - 4
+    - 5
+    - 6
+    - 10
+    - 33
+    - 54
+    - 67
+    - 93
+    - 103
+    - 109
+    - 127
+    - 132
+    - 133
+    - 136
+    - 148
+    - 149
+    - 150
+    - 152
+    - 172
+    - 176
+    - 197
+    - 234
+    - 251
+    - 263
+    - 284
+    - 297
+    - 323
+    - 332
+    - 338
+    - 356
+    - 361
+    - 362
+    - 365
+    - 377
+    - 378
+    - 379
+    - 397
+    - 454
+  min_depth_m: 0.20
+  max_depth_m: 2.50
+  depth_window_size: 5
+  depth_valid_ratio: 0.35
+  min_valid_plane_points: 14
+  min_valid_eye_points: 3
+  outlier_sigma: 2.5
+  use_ransac: true
+  ransac_iterations: 36
+  ransac_threshold_m: 0.018
+  ransac_min_inliers: 12
+  max_plane_rmse_m: 0.035
+  normal_towards_camera: true
+  normal_arrow_length_m: 0.12
+
+filter:
+  enabled: true
+  ema_alpha_center: 0.35
+  ema_alpha_axis: 0.20
+  moving_average_window: 5
+  center_deadband_m: 0.003
+  normal_deadband_deg: 3.0
+  x_axis_deadband_deg: 2.0
+  hold_last_valid_seconds: 0.25
+  hold_marks_valid: true
+
+udp:
+  enabled: true
+  ip: 127.0.0.1
+  port: 5005
+
+visualization:
+  enabled: true
+  window_name: Face Pose Debug
+  draw_all_selected_points: true
+  draw_plane_hull: true
+  draw_axes: true
+  font_scale: 0.55
+  line_thickness: 2
