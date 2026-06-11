@@ -7,7 +7,7 @@ local joints = {
     {name = 'joint1_base_yaw', label = 'J1 base yaw', unit = 'deg', lo = -150, hi = 150, step = 1, slider = 101, spin = 201},
     {name = 'joint2_shoulder_pitch', label = 'J2 shoulder', unit = 'deg', lo = -180, hi = 0, step = 1, slider = 102, spin = 202},
     {name = 'joint3_elbow_pitch', label = 'J3 elbow', unit = 'deg', lo = -120, hi = 150, step = 1, slider = 103, spin = 203},
-    {name = 'joint4_telescopic', label = 'J4 telescope', unit = 'mm', lo = 0, hi = 450, step = 1, slider = 104, spin = 204},
+    {name = 'joint4_telescopic', label = 'J4 telescope', unit = 'mm', lo = 0, hi = 280, step = 1, slider = 104, spin = 204},
     {name = 'joint5_screen_pan', label = 'J5 screen pan', unit = 'deg', lo = -180, hi = 180, step = 1, slider = 105, spin = 205},
     {name = 'joint6_screen_pitch', label = 'J6 screen pitch', unit = 'deg', lo = -60, hi = 60, step = 1, slider = 106, spin = 206},
 }

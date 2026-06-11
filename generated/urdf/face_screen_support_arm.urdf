@@ -1,7 +1,14 @@
 <?xml version="1.0"?>
 <robot name="face_screen_support_arm">
+  <material name="neutral_gray"><color rgba="0.78 0.78 0.76 1"/></material>
+  <material name="joint_sky_blue"><color rgba="0.529 0.808 0.922 1"/></material>
+  <material name="screen_black"><color rgba="0 0 0 1"/></material>
+  <material name="center_red"><color rgba="1 0 0 1"/></material>
+
   <link name="base_link">
-    <visual><geometry><mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="base_disc"><geometry><mesh filename="../visuals/base_disc.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="mast"><geometry><mesh filename="../visuals/mast.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="base_front_ref"><geometry><mesh filename="../visuals/base_front_ref.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
     <collision><geometry><mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0 0 0.05"/><mass value="2.0"/><inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/></inertial>
   </link>
@@ -13,7 +20,10 @@
     <limit lower="-2.61799" upper="2.61799" effort="30" velocity="1.5"/>
   </joint>
   <link name="yaw_link">
-    <visual><geometry><mesh filename="../meshes/yaw_link.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="yaw_bearing"><geometry><mesh filename="../visuals/yaw_bearing.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="shoulder_yoke_l"><geometry><mesh filename="../visuals/shoulder_yoke_l.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="shoulder_yoke_r"><geometry><mesh filename="../visuals/shoulder_yoke_r.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="joint2_axis_hint"><geometry><mesh filename="../visuals/joint2_axis_hint.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
     <collision><geometry><mesh filename="../meshes/yaw_link.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0 0 0"/><mass value="0.7"/><inertia ixx="0.005" ixy="0" ixz="0" iyy="0.005" iyz="0" izz="0.005"/></inertial>
   </link>
@@ -25,7 +35,9 @@
     <limit lower="-3.14159" upper="0" effort="35" velocity="1.2"/>
   </joint>
   <link name="upper_arm">
-    <visual><geometry><mesh filename="../meshes/upper_arm.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="upper_bar"><geometry><mesh filename="../visuals/upper_bar.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="upper_shoulder_hub"><geometry><mesh filename="../visuals/upper_shoulder_hub.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="upper_elbow_hub"><geometry><mesh filename="../visuals/upper_elbow_hub.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
     <collision><geometry><mesh filename="../meshes/upper_arm.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0.14 0 0"/><mass value="0.8"/><inertia ixx="0.006" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/></inertial>
   </link>
@@ -37,7 +49,9 @@
     <limit lower="-2.0944" upper="2.61799" effort="30" velocity="1.2"/>
   </joint>
   <link name="forearm">
-    <visual><geometry><mesh filename="../meshes/forearm.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="forearm_bar"><geometry><mesh filename="../visuals/forearm_bar.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="forearm_elbow_hub"><geometry><mesh filename="../visuals/forearm_elbow_hub.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="slider_outer_tube"><geometry><mesh filename="../visuals/slider_outer_tube.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
     <collision><geometry><mesh filename="../meshes/forearm.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0.12 0 0"/><mass value="0.7"/><inertia ixx="0.004" ixy="0" ixz="0" iyy="0.015" iyz="0" izz="0.015"/></inertial>
   </link>
@@ -46,10 +60,13 @@
     <origin xyz="0.24 0 0" rpy="0 0 0"/>
     <parent link="forearm"/><child link="telescopic_slider"/>
     <axis xyz="1 0 0"/>
-    <limit lower="0" upper="0.45" effort="120" velocity="0.25"/>
+    <limit lower="0" upper="0.28" effort="120" velocity="0.25"/>
   </joint>
   <link name="telescopic_slider">
-    <visual><geometry><mesh filename="../meshes/telescopic_slider.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="inner_tube"><geometry><mesh filename="../visuals/inner_tube.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="linear_rail_hint"><geometry><mesh filename="../visuals/linear_rail_hint.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="telescopic_end_cap"><geometry><mesh filename="../visuals/telescopic_end_cap.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="pan_mount_boss"><geometry><mesh filename="../visuals/pan_mount_boss.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
     <collision><geometry><mesh filename="../meshes/telescopic_slider.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0 0 0.04"/><mass value="0.55"/><inertia ixx="0.003" ixy="0" ixz="0" iyy="0.012" iyz="0" izz="0.012"/></inertial>
   </link>
@@ -61,24 +78,33 @@
     <limit lower="-3.14159" upper="3.14159" effort="8" velocity="2.0"/>
   </joint>
   <link name="screen_pan_link">
-    <visual><geometry><mesh filename="../meshes/screen_pan_link.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="pan_base_disc"><geometry><mesh filename="../visuals/pan_base_disc.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="pan_rotor_cap"><geometry><mesh filename="../visuals/pan_rotor_cap.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="low_pitch_bridge"><geometry><mesh filename="../visuals/low_pitch_bridge.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="pitch_side_plate_l"><geometry><mesh filename="../visuals/pitch_side_plate_l.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="pitch_side_plate_r"><geometry><mesh filename="../visuals/pitch_side_plate_r.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="pitch_axis_hint"><geometry><mesh filename="../visuals/pitch_axis_hint.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
     <collision><geometry><mesh filename="../meshes/screen_pan_link.stl" scale="0.001 0.001 0.001"/></geometry></collision>
     <inertial><origin xyz="0 0 0"/><mass value="0.25"/><inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/></inertial>
   </link>
 
   <joint name="joint6_screen_pitch" type="revolute">
-    <origin xyz="0.05 0 0.042" rpy="0 0 0"/>
+    <origin xyz="0.07 0 0.042" rpy="0 0 0"/>
     <parent link="screen_pan_link"/><child link="screen_pitch_link"/>
     <axis xyz="0 1 0"/>
     <limit lower="-1.0472" upper="1.0472" effort="8" velocity="2.0"/>
   </joint>
   <link name="screen_pitch_link">
-    <visual><geometry><mesh filename="../meshes/screen_pitch_link.stl" scale="0.001 0.001 0.001"/></geometry></visual>
+    <visual name="screen_pitch_hub"><geometry><mesh filename="../visuals/screen_pitch_hub.stl" scale="0.001 0.001 0.001"/></geometry><material name="joint_sky_blue"/></visual>
+    <visual name="screen_plate"><geometry><mesh filename="../visuals/screen_plate.stl" scale="0.001 0.001 0.001"/></geometry><material name="screen_black"/></visual>
+    <visual name="screen_lower_mount"><geometry><mesh filename="../visuals/screen_lower_mount.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="screen_back_mount"><geometry><mesh filename="../visuals/screen_back_mount.stl" scale="0.001 0.001 0.001"/></geometry><material name="neutral_gray"/></visual>
+    <visual name="screen_center_marker"><geometry><mesh filename="../visuals/screen_center_marker.stl" scale="0.001 0.001 0.001"/></geometry><material name="center_red"/></visual>
     <inertial><origin xyz="0.04 0 0"/><mass value="0.65"/><inertia ixx="0.006" ixy="0" ixz="0" iyy="0.004" iyz="0" izz="0.008"/></inertial>
   </link>
 
   <joint name="screen_center_fixed" type="fixed">
-    <origin xyz="0.052 0 0.072" rpy="0 0 0"/>
+    <origin xyz="0.052 0 0.0" rpy="0 0 0"/>
     <parent link="screen_pitch_link"/><child link="screen_center"/>
   </joint>
   <link name="screen_center"/>

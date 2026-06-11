@@ -90,7 +90,7 @@ jointDefs = struct( ...
         "J6 Screen pitch"}, ...
     "unit", {"deg", "deg", "deg", "mm", "deg", "deg"}, ...
     "min", {-150, -180, -120, 0, -180, -60}, ...
-    "max", {150, 0, 150, 450, 180, 60});
+    "max", {150, 0, 150, 280, 180, 60});
 end
 
 function createControls(fig, panel)
@@ -252,7 +252,7 @@ poses("home") = [0, -120, 120, 30, 0, 0];
 poses("left") = [45, -35, -45, 120, -90, 10];
 poses("right") = [-45, -35, -45, 120, 90, 10];
 poses("near") = [0, -55, -55, 20, 0, 5];
-poses("far") = [0, -20, -20, 420, 0, 0];
+poses("far") = [0, -20, -20, 280, 0, 0];
 
 applyDisplayValues(fig, poses(poseName));
 end
