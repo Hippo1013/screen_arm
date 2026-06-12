@@ -72,6 +72,8 @@ state.viewDistance = 0.45;
 state.targetDistance = state.viewDistance;
 state.distanceRange = [0.35, 0.55];
 state.faceNormalArrowLength = 0.15;
+state.steveHeadSize = 0.22;
+state.headPivot = state.faceCenter - [-1, 0, 0] * headFaceOffset(state.steveHeadSize);
 state.viewAngles = [0, 0]; % yaw about world Z, pitch about world Y, degrees.
 state.positionTolerance = 0.025;
 state.normalTolerance = deg2rad(8);
@@ -98,7 +100,7 @@ assignin("base", "q", state.q);
 assignin("base", "faceViewFigure", fig);
 
 fprintf("\nFace-view IK trajectory demo started.\n");
-fprintf("Fixed face center: [%.3f %.3f %.3f] m\n", state.faceCenter);
+fprintf("Default face center: [%.3f %.3f %.3f] m\n", state.faceCenter);
 fprintf("Screen distance:   %.3f m\n", state.viewDistance);
 fprintf("Variables exported: robot, q, faceViewFigure\n\n");
 end
@@ -109,7 +111,7 @@ state = guidata(fig);
 uicontrol( ...
     "Parent", panel, ...
     "Style", "text", ...
-    "String", "Fixed face center: [0.65, 0.00, 1.00] m", ...
+    "String", "Default face center: [0.65, 0.00, 1.00] m", ...
     "Units", "normalized", ...
     "Position", [0.06, 0.935, 0.88, 0.040], ...
     "HorizontalAlignment", "left", ...
@@ -379,14 +381,14 @@ result = bestFallback;
 end
 
 function result = solveSingleDistance(state, distance)
-targetTform = buildTargetTform(state.faceCenter, distance, state.viewAngles);
+[targetTform, ~, ~, faceCenter] = buildStateTargetTform(state, distance);
 [qSolution, solutionInfo] = state.ik( ...
     state.endEffector, targetTform, state.weights, state.q);
 [positionError, fullOrientationError, normalError] = poseErrors( ...
     state.robot, qSolution, state.endEffector, targetTform);
 
 actualTform = getTransform(state.robot, qSolution, state.endEffector);
-actualDistance = norm(actualTform(1:3, 4).' - state.faceCenter);
+actualDistance = norm(actualTform(1:3, 4).' - faceCenter);
 distanceInBand = ...
     actualDistance >= state.distanceRange(1) - 1e-6 && ...
     actualDistance <= state.distanceRange(2) + 1e-6;
@@ -594,15 +596,18 @@ end
 function exportState(fig)
 state = guidata(fig);
 assignTargetToBase(fig);
+[faceCenterCurrent, ~, headPivot] = currentFacePose(state);
 assignin("base", "robot", state.robot);
 assignin("base", "q", state.q);
-assignin("base", "faceCenter", state.faceCenter);
+assignin("base", "faceCenter", faceCenterCurrent);
+assignin("base", "headPivot", headPivot);
 assignin("base", "viewAngles", state.viewAngles);
 assignin("base", "viewDistance", state.viewDistance);
 assignin("base", "targetDistance", state.targetDistance);
 assignin("base", "distanceRange", state.distanceRange);
-fprintf("Exported robot, q, faceCenter, viewAngles, viewDistance, targetDistance, targetTform, targetScreenPoint.\n");
-fprintf("faceCenter = [%.3f %.3f %.3f]\n", state.faceCenter);
+fprintf("Exported robot, q, faceCenter, headPivot, viewAngles, viewDistance, targetDistance, targetTform, targetScreenPoint.\n");
+fprintf("faceCenter = [%.3f %.3f %.3f]\n", faceCenterCurrent);
+fprintf("headPivot = [%.3f %.3f %.3f]\n", headPivot);
 fprintf("viewAngles = [%.1f %.1f] deg\n", state.viewAngles);
 fprintf("targetDistance = %.3f m\n", state.targetDistance);
 end
@@ -658,10 +663,11 @@ end
 
 function updateTargetPreview(fig)
 state = guidata(fig);
+deletePreviewGraphics(state.ax);
 deleteGraphics(state.graphicsHandles);
 
-[targetTform, targetPoint, faceNormal] = buildTargetTform( ...
-    state.faceCenter, state.targetDistance, state.viewAngles);
+[targetTform, targetPoint, faceNormal, headPoint, headPivot] = buildStateTargetTform( ...
+    state, state.targetDistance);
 state.lastTargetTform = targetTform;
 state.lastTargetPoint = targetPoint;
 state.lastFaceNormal = faceNormal;
@@ -672,54 +678,456 @@ else
     targetColor = [0.85, 0.10, 0.10];
 end
 
-headPoint = state.faceCenter;
 nearPoint = headPoint + state.distanceRange(1) * faceNormal;
 farPoint = headPoint + state.distanceRange(2) * faceNormal;
 xAxis = targetTform(1:3, 1);
 yAxis = targetTform(1:3, 2);
 zAxis = targetTform(1:3, 3);
 axisLength = 0.12;
+steveHeadSize = state.steveHeadSize;
 
 hold(state.ax, "on")
-handles = gobjects(10, 1);
-handles(1) = plot3(state.ax, headPoint(1), headPoint(2), headPoint(3), ...
-    "o", "MarkerSize", 9, "MarkerFaceColor", [0.90, 0.10, 0.10], "MarkerEdgeColor", "k");
-handles(2) = quiver3(state.ax, headPoint(1), headPoint(2), headPoint(3), ...
+handles = gobjects(13, 1);
+handles(1) = drawSteveStool(state.ax, headPivot, steveHeadSize);
+handles(2) = drawSteveBody(state.ax, headPivot, steveHeadSize);
+handles(3) = drawSteveHead(state.ax, headPivot, faceNormal, steveHeadSize);
+handles(4) = plot3(state.ax, headPoint(1), headPoint(2), headPoint(3), ...
+    "o", "MarkerSize", 5, "MarkerFaceColor", [0.90, 0.10, 0.10], "MarkerEdgeColor", "k");
+handles(5) = quiver3(state.ax, headPoint(1), headPoint(2), headPoint(3), ...
     faceNormal(1) * state.faceNormalArrowLength, ...
     faceNormal(2) * state.faceNormalArrowLength, ...
     faceNormal(3) * state.faceNormalArrowLength, ...
     0, "LineWidth", 2.2, "Color", [0.90, 0.10, 0.10], "MaxHeadSize", 0.45);
-handles(3) = plot3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(6) = plot3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     "s", "MarkerSize", 8, "MarkerFaceColor", targetColor, "MarkerEdgeColor", "k");
-handles(4) = plot3(state.ax, ...
+handles(7) = plot3(state.ax, ...
     [headPoint(1), targetPoint(1)], ...
     [headPoint(2), targetPoint(2)], ...
     [headPoint(3), targetPoint(3)], ...
     "--", "Color", [0.55, 0.10, 0.10], "LineWidth", 1.4);
-handles(5) = plot3(state.ax, ...
+handles(8) = plot3(state.ax, ...
     [nearPoint(1), farPoint(1)], ...
     [nearPoint(2), farPoint(2)], ...
     [nearPoint(3), farPoint(3)], ...
     "-", "Color", [0.15, 0.15, 0.15], "LineWidth", 2.0);
-handles(6) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(9) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     xAxis(1) * axisLength, xAxis(2) * axisLength, xAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.85, 0.10, 0.10], "MaxHeadSize", 0.8);
-handles(7) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(10) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     yAxis(1) * axisLength, yAxis(2) * axisLength, yAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.05, 0.55, 0.16], "MaxHeadSize", 0.8);
-handles(8) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(11) = quiver3(state.ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     zAxis(1) * axisLength, zAxis(2) * axisLength, zAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.05, 0.25, 0.90], "MaxHeadSize", 0.8);
-handles(9) = text(state.ax, headPoint(1), headPoint(2), headPoint(3) + 0.05, ...
+handles(12) = text(state.ax, headPoint(1), headPoint(2), headPoint(3) + 0.80 * steveHeadSize, ...
     "face center", "Color", [0.55, 0.05, 0.05], "FontWeight", "bold");
-handles(10) = text(state.ax, targetPoint(1), targetPoint(2), targetPoint(3) + 0.05, ...
+handles(13) = text(state.ax, targetPoint(1), targetPoint(2), targetPoint(3) + 0.05, ...
     sprintf("target %.2f m", state.targetDistance), ...
     "Color", targetColor, "FontWeight", "bold");
+tagGraphics(handles(4:end), "FaceTargetPreview");
 hold(state.ax, "off")
 
 state.graphicsHandles = handles;
 guidata(fig, state);
 drawnow limitrate
+end
+
+function handle = drawSteveStool(ax, faceCenter, headSize)
+frontAxis = [-1; 0; 0];
+rightAxis = [0; -1; 0];
+upAxis = [0; 0; 1];
+origin = faceCenter(:);
+
+matrix = eye(4);
+matrix(1:3, 1:3) = [frontAxis, rightAxis, upAxis];
+matrix(1:3, 4) = origin;
+
+handle = hgtransform("Parent", ax, "Matrix", matrix);
+handle.Tag = "SteveStoolModel";
+
+scale = headSize / 0.16;
+wood = [0.50, 0.27, 0.11];
+woodDark = [0.30, 0.14, 0.06];
+groundLocal = -faceCenter(3);
+seatTop = scale * -0.410;
+seatThickness = scale * 0.035;
+seatCenterZ = seatTop - seatThickness / 2;
+seatBottom = seatTop - seatThickness;
+legHeight = max(0.05, seatBottom - groundLocal);
+legCenterZ = groundLocal + legHeight / 2;
+
+drawCuboid(handle, [0, 0, seatCenterZ], ...
+    scale * [0.260, 0.260, 0.035], wood, woodDark);
+
+legSize = [scale * 0.032, scale * 0.032, legHeight];
+for x = scale * [-0.100, 0.100]
+    for y = scale * [-0.100, 0.100]
+        drawCuboid(handle, [x, y, legCenterZ], legSize, wood, woodDark);
+    end
+end
+end
+
+function handle = drawSteveBody(ax, faceCenter, headSize)
+frontAxis = [-1; 0; 0];
+rightAxis = [0; -1; 0];
+upAxis = [0; 0; 1];
+origin = faceCenter(:);
+
+matrix = eye(4);
+matrix(1:3, 1:3) = [frontAxis, rightAxis, upAxis];
+matrix(1:3, 4) = origin;
+
+handle = hgtransform("Parent", ax, "Matrix", matrix);
+handle.Tag = "SteveBodyModel";
+
+shirt = [0.06, 0.47, 0.55];
+shirtDark = [0.04, 0.30, 0.38];
+skin = [0.72, 0.49, 0.31];
+skinDark = [0.58, 0.34, 0.22];
+jeans = [0.16, 0.20, 0.55];
+jeansDark = [0.09, 0.12, 0.34];
+shoe = [0.07, 0.06, 0.08];
+scale = headSize / 0.16;
+legCenterZ = scale * -0.380;
+
+drawCuboid(handle, scale * [0.000, 0.000, -0.215], scale * [0.080, 0.150, 0.240], shirt, shirtDark);
+drawCuboid(handle, scale * [0.000, -0.112, -0.160], scale * [0.080, 0.045, 0.110], shirt, shirtDark);
+drawCuboid(handle, scale * [0.000, -0.112, -0.300], scale * [0.080, 0.045, 0.170], skin, skinDark);
+drawCuboid(handle, scale * [0.000, 0.112, -0.160], scale * [0.080, 0.045, 0.110], shirt, shirtDark);
+drawCuboid(handle, scale * [0.000, 0.112, -0.300], scale * [0.080, 0.045, 0.170], skin, skinDark);
+drawCuboid(handle, [scale * 0.160, scale * -0.040, legCenterZ], ...
+    scale * [0.320, 0.065, 0.075], jeans, jeansDark);
+drawCuboid(handle, [scale * 0.160, scale * 0.040, legCenterZ], ...
+    scale * [0.320, 0.065, 0.075], jeans, jeansDark);
+drawCuboid(handle, [scale * 0.350, scale * -0.040, legCenterZ - scale * 0.005], ...
+    scale * [0.080, 0.070, 0.085], shoe, shoe);
+drawCuboid(handle, [scale * 0.350, scale * 0.040, legCenterZ - scale * 0.005], ...
+    scale * [0.080, 0.070, 0.085], shoe, shoe);
+drawCuboid(handle, scale * [0.000, 0.000, -0.345], scale * [0.082, 0.150, 0.020], jeansDark, jeansDark);
+end
+
+function drawCuboid(parent, center, sizeValue, color, darkColor)
+cx = center(1);
+cy = center(2);
+cz = center(3);
+sx = sizeValue(1) / 2;
+sy = sizeValue(2) / 2;
+sz = sizeValue(3) / 2;
+
+vertices = [
+    cx - sx, cy - sy, cz - sz
+    cx + sx, cy - sy, cz - sz
+    cx + sx, cy + sy, cz - sz
+    cx - sx, cy + sy, cz - sz
+    cx - sx, cy - sy, cz + sz
+    cx + sx, cy - sy, cz + sz
+    cx + sx, cy + sy, cz + sz
+    cx - sx, cy + sy, cz + sz
+];
+faces = [
+    1 2 3 4
+    5 8 7 6
+    1 5 6 2
+    2 6 7 3
+    3 7 8 4
+    4 8 5 1
+];
+faceColors = [
+    darkColor
+    color
+    darkColor
+    color
+    darkColor
+    color
+];
+
+patch( ...
+    "Parent", parent, ...
+    "Vertices", vertices, ...
+    "Faces", faces, ...
+    "FaceVertexCData", faceColors, ...
+    "FaceColor", "flat", ...
+    "EdgeColor", [0.04, 0.035, 0.030], ...
+    "LineWidth", 0.45, ...
+    "FaceAlpha", 1.0, ...
+    "AmbientStrength", 0.75, ...
+    "DiffuseStrength", 0.40);
+end
+
+function handle = drawSteveHead(ax, headPivot, faceNormal, headSize)
+[vertices, faces, colors] = steveHeadMesh(headSize);
+vertices(:, 1) = vertices(:, 1) + headFaceOffset(headSize);
+frontAxis = faceNormal(:) / norm(faceNormal);
+worldUp = [0; 0; 1];
+upAxis = worldUp - dot(worldUp, frontAxis) * frontAxis;
+if norm(upAxis) < 1e-6
+    worldUp = [0; 1; 0];
+    upAxis = worldUp - dot(worldUp, frontAxis) * frontAxis;
+end
+upAxis = upAxis / norm(upAxis);
+rightAxis = cross(upAxis, frontAxis);
+rightAxis = rightAxis / norm(rightAxis);
+upAxis = cross(frontAxis, rightAxis);
+upAxis = upAxis / norm(upAxis);
+
+origin = headPivot(:);
+matrix = eye(4);
+matrix(1:3, 1:3) = [frontAxis, rightAxis, upAxis];
+matrix(1:3, 4) = origin;
+
+handle = hgtransform("Parent", ax, "Matrix", matrix);
+handle.Tag = "SteveHeadModel";
+drawSteveHeadBackfill(handle, headSize, headFaceOffset(headSize));
+patch( ...
+    "Parent", handle, ...
+    "Vertices", vertices, ...
+    "Faces", faces, ...
+    "FaceVertexCData", colors, ...
+    "FaceColor", "flat", ...
+    "EdgeColor", "none", ...
+    "FaceAlpha", 1.0, ...
+    "AmbientStrength", 0.75, ...
+    "DiffuseStrength", 0.40);
+patch( ...
+    "Parent", handle, ...
+    "Vertices", steveHeadOutlineVertices(headSize, headFaceOffset(headSize)), ...
+    "Faces", steveHeadOutlineFaces(), ...
+    "FaceColor", "none", ...
+    "EdgeColor", [0.05, 0.04, 0.03], ...
+    "FaceAlpha", 1.0, ...
+    "LineWidth", 0.7);
+end
+
+function drawSteveHeadBackfill(parent, headSize, xOffset)
+half = headSize / 2;
+skin = [0.72, 0.49, 0.31];
+skinDark = [0.58, 0.34, 0.22];
+hair = [0.20, 0.11, 0.06];
+faceData = {
+    [0, -half, -half; 0, half, -half; 0, half, half; 0, -half, half], skin
+    [-headSize, half, -half; -headSize, -half, -half; -headSize, -half, half; -headSize, half, half], hair
+    [0, -half, -half; -headSize, -half, -half; -headSize, -half, half; 0, -half, half], skinDark
+    [-headSize, half, -half; 0, half, -half; 0, half, half; -headSize, half, half], skinDark
+    [0, -half, half; 0, half, half; -headSize, half, half; -headSize, -half, half], hair
+    [0, -half, -half; -headSize, -half, -half; -headSize, half, -half; 0, half, -half], skinDark
+};
+
+for i = 1:size(faceData, 1)
+    vertices = faceData{i, 1};
+    vertices(:, 1) = vertices(:, 1) + xOffset;
+    patch( ...
+        "Parent", parent, ...
+        "Vertices", vertices, ...
+        "Faces", [1 2 3 4], ...
+        "FaceColor", faceData{i, 2}, ...
+        "EdgeColor", "none", ...
+        "FaceAlpha", 1.0, ...
+        "AmbientStrength", 0.75, ...
+        "DiffuseStrength", 0.40);
+end
+end
+
+function [vertices, faces, colors] = steveHeadMesh(headSize)
+textures = steveHeadTextures();
+vertices = zeros(0, 3);
+faces = zeros(0, 4);
+colors = zeros(0, 3);
+
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.front, "front", headSize);
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.back, "back", headSize);
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.left, "left", headSize);
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.right, "right", headSize);
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.top, "top", headSize);
+[vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.bottom, "bottom", headSize);
+end
+
+function [vertices, faces, colors] = appendSteveFace(vertices, faces, colors, texture, faceName, headSize)
+half = headSize / 2;
+depth = headSize;
+step = headSize / 8;
+surfaceOffset = 0.001;
+
+for row = 1:8
+    for col = 1:8
+        a = -half + (col - 1) * step;
+        b = -half + col * step;
+        top = half - (row - 1) * step;
+        bottom = half - row * step;
+
+        switch faceName
+            case "front"
+                quad = [surfaceOffset, a, top; surfaceOffset, b, top; surfaceOffset, b, bottom; surfaceOffset, a, bottom];
+            case "back"
+                quad = [-depth - surfaceOffset, b, top; -depth - surfaceOffset, a, top; -depth - surfaceOffset, a, bottom; -depth - surfaceOffset, b, bottom];
+            case "left"
+                quad = [-b - half, -half - surfaceOffset, top; -a - half, -half - surfaceOffset, top; -a - half, -half - surfaceOffset, bottom; -b - half, -half - surfaceOffset, bottom];
+            case "right"
+                quad = [-a - half, half + surfaceOffset, top; -b - half, half + surfaceOffset, top; -b - half, half + surfaceOffset, bottom; -a - half, half + surfaceOffset, bottom];
+            case "top"
+                quad = [-b - half, a, half + surfaceOffset; -a - half, a, half + surfaceOffset; -a - half, b, half + surfaceOffset; -b - half, b, half + surfaceOffset];
+            case "bottom"
+                quad = [-a - half, a, -half - surfaceOffset; -b - half, a, -half - surfaceOffset; -b - half, b, -half - surfaceOffset; -a - half, b, -half - surfaceOffset];
+        end
+
+        first = size(vertices, 1) + 1;
+        vertices = [vertices; quad]; %#ok<AGROW>
+        faces = [faces; first, first + 1, first + 2, first + 3]; %#ok<AGROW>
+        colors = [colors; reshape(texture(row, col, :), 1, 3)]; %#ok<AGROW>
+    end
+end
+end
+
+function textures = steveHeadTextures()
+symbols = "ABCDEF GHIJKLMNPQW";
+colors = [
+    0.12 0.065 0.025  % A hair nearly black
+    0.17 0.095 0.035  % B hair dark brown
+    0.23 0.135 0.055  % C hair brown
+    0.29 0.175 0.075  % D hair warm brown
+    0.36 0.225 0.105  % E hair highlight
+    0.43 0.255 0.125  % F hair/side highlight
+    0.00 0.000 0.000  % space fallback, unused in texture cells
+    0.88 0.640 0.470  % G skin light
+    0.80 0.560 0.400  % H skin base
+    0.70 0.455 0.305  % I skin shadow
+    0.60 0.365 0.235  % J skin dark
+    0.48 0.265 0.155  % K beard
+    0.33 0.170 0.080  % L beard dark
+    0.55 0.315 0.220  % M mouth
+    0.18 0.120 0.420  % N iris purple
+    0.12 0.245 0.650  % P iris blue edge
+    0.73 0.475 0.350  % Q skin side muted
+    0.96 0.945 0.925  % W eye white
+];
+
+front = textureFromRows([
+    "ABBBBBCB"
+    "BBBBCCBB"
+    "BGGHHGGB"
+    "IHHHHHHI"
+    "HWNIHPWH"
+    "IHHKMIHJ"
+    "JKLLLKJJ"
+    "JLLKLLIJ"
+], symbols, colors);
+
+back = textureFromRows([
+    "BBCBCBBA"
+    "BACCDBBB"
+    "CBCABBBB"
+    "BCBBAACB"
+    "BCBCABCB"
+    "BBCCBBAB"
+    "IIBBBBIJ"
+    "JIABBBHI"
+], symbols, colors);
+
+left = textureFromRows([
+    "BBBBCDBB"
+    "BBBBCCCB"
+    "CBBBBABB"
+    "BBBBCHHB"
+    "BBBBIHHI"
+    "BBBIHHHI"
+    "IHHHIIHI"
+    "JIIHHHIJ"
+], symbols, colors);
+
+right = textureFromRows([
+    "CBBBBCBB"
+    "BBBDBBBB"
+    "BBAABBBB"
+    "ABBBBCBB"
+    "BBBBHHBB"
+    "BBBIHHHB"
+    "IIHHIIBB"
+    "JIHHHHIJ"
+], symbols, colors);
+
+top = textureFromRows([
+    "BBCBBCBB"
+    "BAABBBAB"
+    "BCBBBBCB"
+    "ABBABBBB"
+    "BBBBBCBB"
+    "CBBABBCB"
+    "BABBABBB"
+    "BBCBBBAB"
+], symbols, colors);
+
+bottom = textureFromRows([
+    "GHHHHIHH"
+    "HHHHHHQI"
+    "HIHHHIIH"
+    "HHHJHHHH"
+    "IHHHHHHI"
+    "HHIHHIHH"
+    "GHHHHHHH"
+    "HHIHHHQH"
+], symbols, colors);
+
+textures = struct( ...
+    "front", front, ...
+    "back", back, ...
+    "left", left, ...
+    "right", right, ...
+    "top", top, ...
+    "bottom", bottom);
+end
+
+function image = textureFromRows(rows, symbols, colors)
+rows = char(rows);
+image = zeros(8, 8, 3);
+for i = 1:strlength(symbols)
+    symbol = extractBetween(symbols, i, i);
+    mask = rows == char(symbol);
+    for channel = 1:3
+        plane = image(:, :, channel);
+        plane(mask) = colors(i, channel);
+        image(:, :, channel) = plane;
+    end
+end
+end
+
+function vertices = steveHeadOutlineVertices(headSize, xOffset)
+half = headSize / 2;
+vertices = [
+    0, -half, -half
+    0, half, -half
+    0, half, half
+    0, -half, half
+    -headSize, -half, -half
+    -headSize, half, -half
+    -headSize, half, half
+    -headSize, -half, half
+];
+vertices(:, 1) = vertices(:, 1) + xOffset;
+end
+
+function faces = steveHeadOutlineFaces()
+faces = [
+    1 2 3 4
+    5 8 7 6
+    1 5 6 2
+    2 6 7 3
+    3 7 8 4
+    4 8 5 1
+];
+end
+
+function deletePreviewGraphics(ax)
+deleteGraphics(findall(ax, "Tag", "SteveStoolModel"));
+deleteGraphics(findall(ax, "Tag", "SteveBodyModel"));
+deleteGraphics(findall(ax, "Tag", "SteveHeadModel"));
+deleteGraphics(findall(ax, "Tag", "FaceTargetPreview"));
+end
+
+function tagGraphics(handles, tag)
+for i = 1:numel(handles)
+    if isgraphics(handles(i))
+        handles(i).Tag = tag;
+    end
+end
 end
 
 function deleteGraphics(handles)
@@ -730,8 +1138,22 @@ for i = 1:numel(handles)
 end
 end
 
-function [targetTform, targetPoint, faceNormal] = buildTargetTform(faceCenter, distance, viewAngles)
-faceNormal = faceNormalFromAngles(viewAngles);
+function [targetTform, targetPoint, faceNormal, faceCenter, headPivot] = buildStateTargetTform(state, distance)
+[faceCenter, faceNormal, headPivot] = currentFacePose(state);
+[targetTform, targetPoint] = buildTargetTformFromPose(faceCenter, distance, faceNormal);
+end
+
+function [faceCenter, faceNormal, headPivot] = currentFacePose(state)
+faceNormal = faceNormalFromAngles(state.viewAngles);
+headPivot = state.headPivot;
+faceCenter = headPivot + headFaceOffset(state.steveHeadSize) * faceNormal;
+end
+
+function offset = headFaceOffset(headSize)
+offset = 0.50 * headSize;
+end
+
+function [targetTform, targetPoint] = buildTargetTformFromPose(faceCenter, distance, faceNormal)
 targetPoint = faceCenter + distance * faceNormal;
 
 xAxis = faceCenter(:) - targetPoint(:);
@@ -813,8 +1235,11 @@ end
 
 function assignTargetToBase(fig)
 state = guidata(fig);
+[faceCenterCurrent, ~, headPivot] = currentFacePose(state);
 assignin("base", "targetTform", state.lastTargetTform);
 assignin("base", "targetScreenPoint", state.lastTargetPoint);
+assignin("base", "faceCenter", faceCenterCurrent);
+assignin("base", "headPivot", headPivot);
 assignin("base", "faceNormal", state.lastFaceNormal);
 assignin("base", "viewAngles", state.viewAngles);
 assignin("base", "targetDistance", state.targetDistance);
