@@ -5,54 +5,42 @@ from typing import Any
 import cv2
 import numpy as np
 
-from face_geometry import FacePose
+from pose_types import FacePose
 
 
 class PoseVisualizer:
-    def __init__(self, config: dict[str, Any], normal_arrow_length_m: float) -> None:
+    def __init__(self, config: dict[str, Any], arrow_length_m: float) -> None:
         self.enabled = bool(config.get("enabled", True))
-        self.window_name = str(config.get("window_name", "Face Pose Debug"))
+        self.window_name = str(config.get("window_name", "3DDFA_V2 Face Pose Debug"))
         self.window_position = _optional_int_pair(config.get("window_position"))
         self.window_size = _optional_int_pair(config.get("window_size"))
         self.window_initialized = False
-        self.draw_all_selected_points = bool(config.get("draw_all_selected_points", True))
-        self.draw_plane_hull = bool(config.get("draw_plane_hull", True))
+        self.draw_bbox = bool(config.get("draw_bbox", True))
+        self.draw_landmarks = bool(config.get("draw_landmarks", True))
         self.draw_axes = bool(config.get("draw_axes", True))
+        self.draw_auxiliary_x_axis = bool(config.get("draw_auxiliary_x_axis", False))
         self.font_scale = float(config.get("font_scale", 0.55))
         self.line_thickness = int(config.get("line_thickness", 2))
-        self.normal_arrow_length_m = float(normal_arrow_length_m)
+        self.arrow_length_m = float(arrow_length_m)
 
     def draw(self, frame: np.ndarray, pose: FacePose, fps: float, intrinsics: Any) -> np.ndarray:
-        if self.draw_all_selected_points and pose.selected_points_px:
-            for point in pose.selected_points_px:
-                cv2.circle(frame, point, 2, (0, 255, 255), -1, lineType=cv2.LINE_AA)
+        if self.draw_bbox and pose.bbox is not None:
+            x1, y1, x2, y2 = pose.bbox
+            color = (0, 220, 0) if pose.valid else (0, 0, 255)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, self.line_thickness, lineType=cv2.LINE_AA)
 
-        if self.draw_plane_hull and pose.plane_points_px and len(pose.plane_points_px) >= 3:
-            hull = cv2.convexHull(np.asarray(pose.plane_points_px, dtype=np.int32))
-            cv2.polylines(frame, [hull], True, (255, 180, 0), 1, lineType=cv2.LINE_AA)
+        if self.draw_landmarks and pose.landmarks_px:
+            for point in pose.landmarks_px:
+                cv2.circle(frame, point, 2, (0, 255, 255), -1, lineType=cv2.LINE_AA)
 
         if pose.center_px is not None:
             color = (0, 255, 0) if pose.valid else (0, 0, 255)
-            cv2.circle(frame, pose.center_px, 6, color, -1, lineType=cv2.LINE_AA)
+            cv2.circle(frame, pose.center_px, 5, color, -1, lineType=cv2.LINE_AA)
 
         if self.draw_axes and pose.valid and pose.center is not None and pose.normal is not None:
-            self._draw_vector(
-                frame,
-                intrinsics,
-                pose.center,
-                pose.normal,
-                self.normal_arrow_length_m,
-                (0, 0, 255),
-            )
-            if pose.x_axis is not None:
-                self._draw_vector(
-                    frame,
-                    intrinsics,
-                    pose.center,
-                    pose.x_axis,
-                    self.normal_arrow_length_m * 0.7,
-                    (255, 0, 0),
-                )
+            self._draw_vector(frame, intrinsics, pose.center, pose.normal, self.arrow_length_m, (0, 0, 255))
+            if self.draw_auxiliary_x_axis and pose.x_axis is not None:
+                self._draw_vector(frame, intrinsics, pose.center, pose.x_axis, self.arrow_length_m * 0.7, (255, 0, 0))
 
         self._draw_text(frame, pose, fps)
         return frame
@@ -71,7 +59,9 @@ class PoseVisualizer:
         return key == ord("q")
 
     def close(self) -> None:
-        cv2.destroyWindow(self.window_name)
+        if self.window_initialized:
+            cv2.destroyWindow(self.window_name)
+            self.window_initialized = False
 
     def _draw_vector(
         self,
@@ -101,12 +91,17 @@ class PoseVisualizer:
             f"valid: {pose.valid}  status: {pose.status}",
             f"FPS: {fps:.1f}",
         ]
-        if pose.center is not None:
-            lines.append(f"center[m]: {pose.center[0]:+.3f}, {pose.center[1]:+.3f}, {pose.center[2]:+.3f}")
+        if pose.angles_deg:
+            lines.append(
+                "yaw/pitch/roll: "
+                f"{pose.angles_deg.get('yaw', 0.0):+.1f}, "
+                f"{pose.angles_deg.get('pitch', 0.0):+.1f}, "
+                f"{pose.angles_deg.get('roll', 0.0):+.1f} deg"
+            )
         if pose.normal is not None:
-            lines.append(f"normal: {pose.normal[0]:+.3f}, {pose.normal[1]:+.3f}, {pose.normal[2]:+.3f}")
-        if pose.x_axis is not None:
-            lines.append(f"x_axis: {pose.x_axis[0]:+.3f}, {pose.x_axis[1]:+.3f}, {pose.x_axis[2]:+.3f}")
+            lines.append(f"face_dir/red normal: {pose.normal[0]:+.3f}, {pose.normal[1]:+.3f}, {pose.normal[2]:+.3f}")
+        if pose.center is not None:
+            lines.append(f"center proxy[m]: {pose.center[0]:+.3f}, {pose.center[1]:+.3f}, {pose.center[2]:+.3f}")
         if pose.imu:
             if "accel" in pose.imu:
                 accel = pose.imu["accel"]
@@ -114,8 +109,6 @@ class PoseVisualizer:
             if "gyro" in pose.imu:
                 gyro = pose.imu["gyro"]
                 lines.append(f"gyro: {gyro[0]:+.3f}, {gyro[1]:+.3f}, {gyro[2]:+.3f}")
-        if pose.rmse_m is not None:
-            lines.append(f"plane rmse[m]: {pose.rmse_m:.4f}")
 
         x = 12
         y = 24
@@ -146,8 +139,14 @@ class PoseVisualizer:
 def _project_point(point: np.ndarray, intrinsics: Any) -> tuple[int, int] | None:
     if point[2] <= 1e-6:
         return None
-    u = point[0] / point[2] * intrinsics.fx + intrinsics.ppx
-    v = point[1] / point[2] * intrinsics.fy + intrinsics.ppy
+    fx = float(getattr(intrinsics, "fx", 0.0) or 0.0)
+    fy = float(getattr(intrinsics, "fy", 0.0) or 0.0)
+    ppx = float(getattr(intrinsics, "ppx", 0.0) or 0.0)
+    ppy = float(getattr(intrinsics, "ppy", 0.0) or 0.0)
+    if fx <= 1e-6 or fy <= 1e-6:
+        return None
+    u = point[0] / point[2] * fx + ppx
+    v = point[1] / point[2] * fy + ppy
     return int(round(float(u))), int(round(float(v)))
 
 

@@ -551,3 +551,527 @@ q = q_start + (q_goal - q_start) * s
 
 - 以上为本次 `AGENT.md` 记录更新前已经完成并推送的提交记录。
 - 后续提交状态以 `git log` 和 `git status -sb` 为准。
+
+## 2026-06-12 阶段更新：人脸建模模块与机械臂仿真的联合跟随测试
+
+本阶段新增根目录联合测试脚本：
+
+- `test/demo_face_pose_screen_arm_live_follow.m`
+
+脚本用途：
+
+- 同时启动 Python 人脸建模模块和 MATLAB 机械臂仿真窗口。
+- 仿真中仍固定人脸中心点：`[0.65, 0.00, 1.00] m`。
+- 人脸方向不再由 UI 滑块输入，而是读取 Python 人脸建模模块输出的人脸法向量。
+- UI 中提供 `开始跟随` / `暂停跟随` 按钮；只有进入跟随状态后，机械臂才会规划并运动到目标位姿。
+- 目标屏幕距离仍遵循：优先 `0.45 m`，不可达时退化搜索 `[0.35, 0.55] m`。
+- 继承旧脚本的不可达诊断逻辑：使用 `ikLoose` 估计是哪类关节限制主导不可达。
+
+Python 侧接口增强：
+
+- 新增 `face_pose_module/pose_file_writer.py`，用于把最新 `FacePose` 以 JSON 形式原子写入临时文件。
+- `face_pose_module/main.py` 新增参数：
+  - `--pose-file`
+  - `--window-x`
+  - `--window-y`
+  - `--window-width`
+  - `--window-height`
+- `face_pose_module/visualizer.py` 支持通过配置/命令行指定 OpenCV 窗口位置和大小。
+- 原有 UDP 输出仍保留；联合 demo 默认通过 JSON 姿态文件轮询，避免依赖 MATLAB 的 UDP/Instrument Control Toolbox。
+
+坐标变换约定：
+
+- RealSense 相机坐标使用常规约定：`+X` 图像右方，`+Y` 图像下方，`+Z` 光轴向前。
+- 仿真模型中深度相机示意模型默认朝向：相机 `+Z` 对齐世界 `+X`，相机 `+X` 对齐世界 `-Y`。
+- 联合脚本使用深度相机示意模型几何中心作为相机坐标系原点，当前计算值约为：
+
+```text
+camera center world = [-0.099, 0.000, 0.800] m
+```
+
+- D435i 当前输出的是原始 `accel` 和 `gyro`，不是融合后的绝对姿态。
+- 因此联合脚本采用“默认相机偏航由摆放位置/仿真安装确定，IMU 加速度重力方向修正镜头上仰和侧倾”的方式估计相机姿态。
+- 偏航角不能仅由 D435i IMU 绝对确定；后续如果需要更严谨的相机外参，应增加手眼标定、棋盘格/AprilTag 标定，或引入外部姿态传感器。
+
+跟随抖动抑制：
+
+- Python 人脸模块仍使用原有 EMA、滑动平均和角度死区稳定化。
+- MATLAB 联合 demo 额外增加目标变化阈值：
+  - 标称目标点变化小于 `0.035 m` 且法向变化小于 `6 deg` 时，不重新规划。
+  - 两次运动之间至少间隔 `0.40 s`。
+- 轨迹动画相比旧 demo 加快：根据关节变化量使用约 `24-60` 帧，每帧约 `0.012 s`。
+
+可视化：
+
+- 人脸中心、红色人脸法向量、目标屏幕中心、目标位姿三轴箭头沿用旧 demo 风格。
+- 人脸中心到目标屏幕中心的中间虚线改为黄色，便于和旧脚本区分。
+- OpenCV 人脸建模窗口由 MATLAB 启动时放到屏幕左上角并缩小。
+- MATLAB 仿真窗口放到屏幕右下侧并占据较大区域。
+
+验证记录：
+
+- `D:\Anaconda\envs\screen_arm\python.exe -m compileall face_pose_module`：通过。
+- `matlab -batch "issues = checkcode('test/demo_face_pose_screen_arm_live_follow.m'); disp(issues)"`：无输出问题。
+- `matlab -batch "addpath('test'); demo_face_pose_screen_arm_live_follow('normal', false); pause(1.0); close all force"`：可导入 URDF、打开仿真窗口并建立 timer。
+- 默认法向目标触发 `开始跟随`：IK `success`，`0.45 m` 标称距离可达。
+- 模拟姿态文件输入 `normal=[0,0,-1]`、`accel=[0,1,0]` 后，MATLAB 转换得到 `faceNormalWorld=[-1,0,0]`，符合当前仿真坐标约定。
+
+### 2026-06-12 追加约定：相机姿态只修正俯仰角
+
+用户确认联合测试阶段的相机姿态约定如下：
+
+- 相机偏摆 `yaw` 默认端正，即镜头面朝世界坐标系 `+X` 方向。
+- 相机横滚 `roll` 默认端正，即不考虑镜头画面左右倾斜。
+- 相机俯仰 `pitch` 由 D435i IMU 返回信息估计，用于表达现实中相机镜头略微上仰/下俯。
+
+脚本实现更新：
+
+- `test/demo_face_pose_screen_arm_live_follow.m` 中相机姿态计算改为：
+
+```text
+R_world_camera = R_nominal * Rx(pitch)
+```
+
+- `R_nominal` 仍表示仿真默认安装：相机 `+Z` 光轴对齐世界 `+X`。
+- `pitch` 当前由 `imu.accel` 的重力方向估计，只取俯仰分量，不再整体对齐重力向量，因此不会引入 roll 修正。
+- 当前 `imu.gyro` 是角速度，不是绝对角度；若后续需要严格使用陀螺仪积分得到俯仰角，需要增加初始零点、时间积分和漂移校正逻辑。
+
+### 2026-06-12 排查增强：人脸建模进程日志与退出检测
+
+用户反馈联合 demo 中相机画面刚打开就关闭。当前本机复查结果：
+
+- `python main.py --config config.yaml --no-window --no-udp --max-frames 30`：通过。
+- 带 OpenCV 窗口、窗口位置和尺寸参数运行 `90` 帧：通过。
+- 由 MATLAB 联合脚本启动 Python 后等待 `5 s`：`pythonProcess.HasExited = false`，进程未退出。
+
+为便于定位用户现场问题，新增诊断能力：
+
+- `face_pose_module/main.py` 新增 `--log-file` 参数，将 Python 主程序 stdout/stderr 写入日志。
+- `test/demo_face_pose_screen_arm_live_follow.m` 启动 Python 时传入日志路径：
+
+```text
+%TEMP%/screen_arm_face_pose_live.log
+```
+
+- MATLAB timer 会检测 `state.pythonProcess.HasExited`。
+- 如果 Python 人脸模块提前退出，MATLAB UI 状态区会显示退出码和日志尾部，同时命令行打印日志路径。
+
+排查建议：
+
+- 用户再次运行 `demo_face_pose_screen_arm_live_follow` 后，如果相机窗口仍立即关闭，优先查看 MATLAB UI 状态区显示的退出码与日志尾部。
+- 也可直接打开：
+
+```text
+C:\Users\lenovo\AppData\Local\Temp\screen_arm_face_pose_live.log
+```
+
+- 若日志为空或没有捕获到进口级异常，再单独在 PowerShell 中运行 Python 主程序复现。
+
+根因定位与修复：
+
+- 日志捕获到 Python 端异常：
+
+```text
+[runtime error] [WinError 5] 拒绝访问:
+'...screen_arm_face_pose_live.json.tmp' -> '...screen_arm_face_pose_live.json'
+```
+
+- 原因是 Windows 下 MATLAB 轮询读取 JSON 文件时，可能短暂占用目标文件，导致 Python `os.replace()` 原子替换失败。
+- `face_pose_module/pose_file_writer.py` 已更新：
+  - 写 JSON 后执行 `os.replace()`。
+  - 如果遇到 `PermissionError`，最多重试 `5` 次，每次间隔 `0.002 s`。
+  - 如果仍失败，只跳过当前帧并节流打印 warning，不再让主程序异常退出。
+- 修复后验证：
+  - `D:\Anaconda\envs\screen_arm\python.exe -m compileall face_pose_module`：通过。
+  - 带 `--pose-file`、`--log-file`、`--no-window`、`--no-udp`、`--max-frames 30` 的短运行：通过，姿态 JSON 文件正常生成。
+
+## 2026-06-12 阶段更新：新增 3DDFA_V2 第二版人脸姿态模块
+
+用户提出 v1 的 MediaPipe Face Landmarker 在大角度偏摆下识别困难，因此要求在项目根目录新增独立实验分支：
+
+- `face_pose_module_v2/`
+
+约束：
+
+- 本阶段所有新增代码、文档、配置和测试脚本均放在 `face_pose_module_v2/` 内。
+- 不修改 `face_pose_module/` 第一版模块。
+- 不破坏 MATLAB 仿真模块。
+- 不移动已有 `screen_arm` 机械臂模型。
+
+### v2 总体链路
+
+v2 采用 3DDFA_V2 单目 RGB 头部姿态估计路线：
+
+```text
+D435i RGB 视频流 + IMU
+  ↓
+FaceBoxes 人脸框初始化 / 重捕获
+  ↓
+3DDFA_V2 三维人脸对齐与头部姿态估计
+  ↓
+输出 normal / yaw / pitch / roll / imu
+  ↓
+OpenCV 可视化测试、JSON 文件、UDP
+```
+
+关键区别：
+
+- v1 是 `MediaPipe + RGB-D depth`，使用深度反投影三维点并拟合人脸平面。
+- v2 是 `FaceBoxes + 3DDFA_V2`，只使用 RGB 回归 3DMM 姿态参数。
+- v2 不启动 D435i 深度流。
+- v2 仍启动 D435i IMU，保留 `accel` 和 `gyro` 供 MATLAB 侧相机姿态补偿。
+- v2 的真实人脸三维位置不可靠，`center` 只是兼容字段和可视化代理点；控制逻辑应主要使用 `normal`。
+
+### 新增目录和主要文件
+
+新增目录：
+
+- `face_pose_module_v2/`
+
+主要文件：
+
+- `face_pose_module_v2/README.md`：中文说明、运行方式、输出字段、测试命令和已知限制。
+- `face_pose_module_v2/config.yaml`：RGB 相机、FaceBoxes、3DDFA、滤波、UDP 和可视化参数。
+- `face_pose_module_v2/environment.yml`：独立 conda 环境 `screen_arm_v2`。
+- `face_pose_module_v2/requirements.txt`：v2 Python 依赖。
+- `face_pose_module_v2/main.py`：主入口，串联采集、检测、3DDFA 姿态、滤波、输出和可视化。
+- `face_pose_module_v2/camera_realsense_rgb.py`：只启动 RGB + IMU 的 D435i 采集层。
+- `face_pose_module_v2/face_detector.py`：FaceBoxes 检测器封装，同时保留 OpenCV Haar 检测器实现。
+- `face_pose_module_v2/three_ddfa_pose.py`：3DDFA_V2 适配器，输出 `normal`、`x_axis`、`angles_deg` 和代理 `center`。
+- `face_pose_module_v2/pose_types.py`：`FacePose` 数据结构和 JSON/UDP 字段定义。
+- `face_pose_module_v2/filters.py`：EMA、滑动平均、角度死区和短时丢失保持。
+- `face_pose_module_v2/udp_sender.py`：UDP/JSON 输出。
+- `face_pose_module_v2/pose_file_writer.py`：最新姿态 JSON 原子写入。
+- `face_pose_module_v2/visualizer.py`：OpenCV 可视化窗口，显示 bbox、landmarks、红色法向轴和蓝色辅助横向轴。
+- `face_pose_module_v2/scripts/bootstrap_3ddfa_v2.py`：重新拉取官方 3DDFA_V2 的脚本。
+
+测试脚本：
+
+- `face_pose_module_v2/tests/import_smoke_test.py`
+- `face_pose_module_v2/tests/offline_image_pose_test.py`
+- `face_pose_module_v2/tests/realsense_rgb_imu_smoke_test.py`
+- `face_pose_module_v2/tests/full_pipeline_smoke_test.py`
+- `face_pose_module_v2/tests/live_visual_snapshot_test.py`
+- `face_pose_module_v2/tests/udp_receiver_test.py`
+
+第三方代码：
+
+- `face_pose_module_v2/third_party/3DDFA_V2/`
+- `face_pose_module_v2/third_party/3DDFA_V2_COMMIT.txt`
+- `face_pose_module_v2/third_party/README.md`
+
+官方 3DDFA_V2 当前记录提交：
+
+```text
+1b6c67601abffc1e9f248b291708aef0e43b55ae
+```
+
+### 环境
+
+已创建独立 conda 环境：
+
+- 环境名：`screen_arm_v2`
+- 路径：`D:\Anaconda\envs\screen_arm_v2`
+- Python：`3.11`
+
+已安装并验证：
+
+- `pyrealsense2==2.58.1.10581`
+- `opencv-python==4.13.0.92`
+- `numpy==2.4.6`
+- `scipy==1.17.1`
+- `pyyaml==6.0.3`
+- `torch==2.12.0+cpu`
+- `torchvision==0.27.0+cpu`
+- `matplotlib`
+
+说明：
+
+- v1 的 `screen_arm` 环境不包含 `torch/torchvision`。
+- 为避免影响 v1，v2 使用 `screen_arm_v2`。
+
+### 3DDFA_V2 与 FaceBoxes 适配
+
+当前默认配置：
+
+```yaml
+detector:
+  type: faceboxes
+
+three_ddfa:
+  use_onnx: false
+  config_path: configs/mb1_120x120.yml
+```
+
+使用官方 PyTorch 权重：
+
+- `third_party/3DDFA_V2/weights/mb1_120x120.pth`
+- `third_party/3DDFA_V2/configs/bfm_noneck_v3.pkl`
+
+Windows 兼容补丁：
+
+- 官方 `FaceBoxes` 默认导入编译版 `cpu_nms`。
+- 当前 Windows 环境没有编译 `cpu_nms` 扩展。
+- 已在 `third_party/3DDFA_V2/FaceBoxes/utils/nms_wrapper.py` 加入 fallback：
+  - 如果编译版 `cpu_nms` 不存在，则退回官方仓库自带的 `py_cpu_nms.py`。
+
+### 输出字段与最重要内容
+
+v2 输出字段兼容 v1 主字段：
+
+```json
+{
+  "t": 1781266352.65,
+  "valid": true,
+  "center": [-0.03, -0.08, 0.65],
+  "normal": [-0.83, 0.17, -0.54],
+  "x_axis": [0.54, -0.02, -0.84],
+  "imu": {
+    "accel": [0.08, -9.30, 2.31],
+    "gyro": [-0.002, 0.001, 0.003]
+  },
+  "angles_deg": {
+    "yaw": 57.0,
+    "pitch": 7.5,
+    "roll": 2.5
+  },
+  "status": "valid_filtered"
+}
+```
+
+字段含义：
+
+- `t`：时间戳，单位秒。
+- `valid`：当前人脸姿态是否有效。
+- `center`：代理人脸中心点，单位米；v2 没有深度，因此不是精确三维位置。
+- `normal`：最重要字段，人脸法向量/人脸面向方向/红色轴方向，单位向量。
+- `x_axis`：蓝色辅助横向轴，用于观察脸部横向姿态，不代表视线方向。
+- `imu`：D435i 加速度计和陀螺仪最新样本。
+- `angles_deg`：3DDFA 输出的 yaw/pitch/roll，单位度，主要用于调试。
+- `status`：状态文本，如 `valid_filtered`、`no_face`、`lost_hold`。
+
+控制层建议优先使用：
+
+1. `valid`
+2. `normal`
+3. `imu`
+4. `angles_deg` 和 `status` 用于调试
+5. `center` 仅用于兼容和可视化
+
+### 人脸方向向量起点
+
+v2 中红色人脸方向向量的起点为代理 `center`，不是深度测得的真实人脸中心。
+
+计算逻辑：
+
+1. 3DDFA 输出 68 个人脸关键点。
+2. 取左右眼关键点均值：
+   - 左眼：`36:42`
+   - 右眼：`42:48`
+3. 左右眼中心点取中点，得到二维像素 `center_px`。
+4. 使用 `assumed_face_distance_m = 0.65` 作为假定深度。
+5. 结合 D435i 彩色相机内参反投影：
+
+```text
+x = (u - ppx) / fx * 0.65
+y = (v - ppy) / fy * 0.65
+z = 0.65
+```
+
+该三维点用于：
+
+- OpenCV 画红色/蓝色箭头。
+- 保持 `center` 字段与 v1 输出兼容。
+
+不建议用于机器人精确位置控制。
+
+### 坐标轴与方向约定
+
+RealSense 彩色相机坐标约定：
+
+- `+X`：图像右方。
+- `+Y`：图像下方。
+- `+Z`：相机光轴向前，从相机指向用户。
+
+人脸方向约定：
+
+- `normal` 就是人脸法向量。
+- `normal` 也是人脸所面向的方向。
+- OpenCV 可视化中的红色箭头画的就是 `normal`。
+- 正脸看向相机时，`normal` 通常接近 `[0, 0, -1]`。
+
+蓝色轴：
+
+- `x_axis` 为脸部横向辅助参考轴。
+- 当前 `visualization.draw_auxiliary_x_axis = true`，因此默认重新显示蓝色轴。
+- 蓝色轴不代表视线方向。
+
+### X 方向反向问题与修复
+
+用户实测反馈：
+
+- 头向一边转时，红色箭头会向另一边转。
+
+排查结论：
+
+- 离线样例也复现：人脸明显朝画面左侧，但红色箭头朝画面右侧。
+- 原因是 3DDFA 姿态输出到 RealSense/OpenCV 图像坐标时，水平 `X` 分量符号与项目约定相反。
+- 这不是单纯的“摄像头画面未镜像”主观问题，而是输出轴映射需要修正。
+
+修复：
+
+- `three_ddfa_pose.py` 新增输出轴修正。
+- `config.yaml` 当前默认：
+
+```yaml
+flip_output_x: true
+flip_output_y: false
+```
+
+修复效果：
+
+- 人脸朝画面左侧时，`normal.x < 0`。
+- 红色法向箭头也朝画面左侧。
+- 此修正作用于姿态输出层，因此 OpenCV 可视化、JSON、UDP 和 MATLAB 后续消费的 `normal` 都同步修正。
+
+### 可视化约定
+
+OpenCV 可视化窗口显示：
+
+- 人脸检测框。
+- 3DDFA 68 点 landmarks。
+- 人脸中心代理点。
+- 红色箭头：`normal`，人脸面向方向。
+- 蓝色箭头：`x_axis`，辅助横向轴。
+- 文本信息：`valid`、`status`、`FPS`、`yaw/pitch/roll`、`face_dir/red normal`、`center proxy`、`imu`。
+
+当前配置：
+
+```yaml
+visualization:
+  draw_bbox: true
+  draw_landmarks: true
+  draw_axes: true
+  draw_auxiliary_x_axis: true
+```
+
+### 已验证命令
+
+语法检查：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe -m compileall -q face_pose_module_v2
+```
+
+导入和模型加载：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe tests\import_smoke_test.py --load-model
+```
+
+离线图片测试：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe tests\offline_image_pose_test.py
+```
+
+D435i RGB + IMU 冒烟测试：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe tests\realsense_rgb_imu_smoke_test.py --frames 60
+```
+
+完整链路无窗口测试：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe tests\full_pipeline_smoke_test.py --frames 20
+```
+
+实时可视化快照：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe tests\live_visual_snapshot_test.py --frames 60
+```
+
+带姿态 JSON 的主程序固定帧测试：
+
+```powershell
+D:\Anaconda\envs\screen_arm_v2\python.exe main.py --config config.yaml --no-window --no-udp --max-frames 60 --pose-file outputs\live_smoke_pose_faceboxes.json
+```
+
+### 实测结果
+
+RGB + IMU 冒烟测试：
+
+- color intrinsics: `1280x720`
+- `fx ≈ 912.02`
+- `fy ≈ 912.15`
+- 60 帧读取约 `18.0 FPS`
+- 已读取到 `accel` 和 `gyro`
+
+离线图片测试：
+
+- 3DDFA 模型加载成功。
+- FaceBoxes 检测成功。
+- 姿态输出有效。
+- 已生成可视化图片：
+  - `face_pose_module_v2/outputs/offline_image_pose.jpg`
+  - `face_pose_module_v2/outputs/offline_image_pose_faceboxes.jpg`
+  - `face_pose_module_v2/outputs/offline_image_pose_axis_fixed.jpg`
+- X 方向修复后，离线样例中人脸朝画面左侧时红色箭头也朝画面左侧。
+
+实时相机测试：
+
+- 当前相机视野中无真实人脸时，FaceBoxes 输出 `valid=false`、`status=no_face`。
+- 这比原先 OpenCV Haar 检测器误检右侧物体更合理。
+- 已生成实时快照：
+  - `face_pose_module_v2/outputs/live_visual_snapshot.jpg`
+  - `face_pose_module_v2/outputs/live_visual_snapshot_faceboxes.jpg`
+
+完整链路：
+
+- 无窗口固定帧运行通过。
+- `outputs/live_smoke_pose_faceboxes.json` 可正常生成。
+- 画面无人脸时 JSON 为 `valid=false`、`status=no_face`，但 RGB、IMU、检测和输出链路没有崩溃。
+
+### 运行方式
+
+可视化主程序：
+
+```powershell
+cd E:\robotics\final_project\ws\face_pose_module_v2
+conda activate screen_arm_v2
+python main.py --config config.yaml --no-udp
+```
+
+保存最新姿态 JSON：
+
+```powershell
+python main.py --config config.yaml --pose-file "$env:TEMP\screen_arm_face_pose_live_v2.json"
+```
+
+固定帧无窗口冒烟测试：
+
+```powershell
+python main.py --config config.yaml --no-window --no-udp --max-frames 90
+```
+
+保存一帧实时可视化：
+
+```powershell
+python tests\live_visual_snapshot_test.py --frames 120
+```
+
+无人脸时要求测试失败：
+
+```powershell
+python tests\live_visual_snapshot_test.py --frames 120 --require-valid
+```
+
+### 已知限制和后续建议
+
+- v2 没有真实深度，`center` 不应作为核心控制依据。
+- `normal` 是最重要输出，后续 MATLAB 或机器人控制应优先消费该字段。
+- 当前默认 `1280x720 @ 30fps`，实测 RGB + IMU 约 `18 FPS`；若实时性不足，可考虑降到 `848x480` 或 `640x480`。
+- 如果后续接入 MATLAB v2 联合 demo，应只改启动路径和环境到 `face_pose_module_v2/main.py` 与 `screen_arm_v2`，不要改机械臂模型。
+- 如果实测上下俯仰方向也反，再考虑开启或调整 `flip_output_y`；当前未默认翻转 Y。

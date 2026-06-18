@@ -1,0 +1,66 @@
+camera:
+  color_width: 1280
+  color_height: 720
+  color_fps: 30
+  color_format: bgr8
+  enable_depth: false
+  enable_imu: true
+  imu_accel_fps: 63
+  imu_gyro_fps: 200
+  warmup_frames: 10
+  frame_timeout_ms: 5000
+
+detector:
+  type: faceboxes
+  repo_path: third_party/3DDFA_V2
+  min_confidence: 0.60
+  max_faces: 1
+  frontal_cascade: ""
+  profile_cascade: ""
+  scale_factor: 1.1
+  min_neighbors: 5
+  min_size_ratio: 0.10
+  nms_iou_threshold: 0.35
+  equalize_hist: true
+
+three_ddfa:
+  repo_path: third_party/3DDFA_V2
+  config_path: configs/mb1_120x120.yml
+  use_onnx: false
+  gpu_mode: false
+  gpu_id: 0
+  detect_interval: 20
+  tracking_min_roi_area_px: 2500
+  assumed_face_distance_m: 0.65
+  normal_towards_camera: true
+  flip_output_x: true
+  flip_output_y: false
+  model_normal_axis: [0.0, 0.0, -1.0]
+  model_x_axis: [1.0, 0.0, 0.0]
+  normal_arrow_length_m: 0.12
+
+filter:
+  enabled: true
+  ema_alpha_center: 0.35
+  ema_alpha_axis: 0.25
+  moving_average_window: 5
+  center_deadband_m: 0.010
+  normal_deadband_deg: 1.5
+  x_axis_deadband_deg: 1.5
+  hold_last_valid_seconds: 0.35
+  hold_marks_valid: true
+
+udp:
+  enabled: true
+  ip: 127.0.0.1
+  port: 5005
+
+visualization:
+  enabled: true
+  window_name: 3DDFA_V2 Face Pose Debug
+  draw_bbox: true
+  draw_landmarks: true
+  draw_axes: true
+  draw_auxiliary_x_axis: true
+  font_scale: 0.55
+  line_thickness: 2

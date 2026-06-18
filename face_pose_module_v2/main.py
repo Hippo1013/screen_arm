@@ -8,22 +8,21 @@ from typing import Any
 
 import yaml
 
-from camera_realsense import RealSenseCamera
-from depth_projector import DepthProjector
-from face_geometry import FaceGeometryEstimator
-from face_landmarker import FaceLandmarkerDetector
+from camera_realsense_rgb import RealSenseRgbCamera
+from face_detector import create_face_detector
 from filters import PoseStabilizer
 from pose_file_writer import JsonPoseFileWriter
+from three_ddfa_pose import ThreeDDFAPoseEstimator
 from udp_sender import UdpPoseSender
 from visualizer import PoseVisualizer
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="D435i + MediaPipe 人脸位姿建模")
-    parser.add_argument("--config", default="config.yaml", help="配置文件路径")
-    parser.add_argument("--no-udp", action="store_true", help="关闭 UDP 输出")
-    parser.add_argument("--no-window", action="store_true", help="关闭 OpenCV 可视化窗口")
-    parser.add_argument("--max-frames", type=int, default=0, help="处理指定帧数后自动退出，0 表示持续运行")
+    parser = argparse.ArgumentParser(description="D435i RGB + 3DDFA_V2 face pose module")
+    parser.add_argument("--config", default="config.yaml", help="Config file path")
+    parser.add_argument("--no-udp", action="store_true", help="Disable UDP output")
+    parser.add_argument("--no-window", action="store_true", help="Disable OpenCV visualization window")
+    parser.add_argument("--max-frames", type=int, default=0, help="Stop after N frames; 0 means run continuously")
     parser.add_argument("--pose-file", default="", help="Write latest pose JSON to this path")
     parser.add_argument("--window-x", type=int, default=None, help="OpenCV window X position")
     parser.add_argument("--window-y", type=int, default=None, help="OpenCV window Y position")
@@ -35,7 +34,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_config(path: Path) -> dict[str, Any]:
     if not path.exists():
-        raise FileNotFoundError(f"找不到配置文件: {path}")
+        raise FileNotFoundError(f"Config file not found: {path}")
     with path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
@@ -56,7 +55,7 @@ def setup_log_file(path: str) -> None:
     log_file = log_path.open("a", encoding="utf-8", buffering=1)
     sys.stdout = log_file
     sys.stderr = log_file
-    print(f"\n--- face_pose_module started at {time.strftime('%Y-%m-%d %H:%M:%S')} ---", flush=True)
+    print(f"\n--- face_pose_module_v2 started at {time.strftime('%Y-%m-%d %H:%M:%S')} ---", flush=True)
 
 
 def main() -> int:
@@ -68,33 +67,20 @@ def main() -> int:
         config_path = module_dir / config_path
 
     camera = None
-    landmarker = None
     udp_sender = None
     pose_file_writer = None
     visualizer = None
+
     try:
         config = load_config(config_path)
         apply_visualization_overrides(config, args)
-        camera = RealSenseCamera(config["camera"])
-    except Exception as exc:
-        print(f"[init error] {exc}", file=sys.stderr)
-        return 2
-
-    print("启动 RealSense 相机...")
-    try:
-        camera.start()
-    except Exception as exc:
-        print(f"[camera error] {exc}", file=sys.stderr)
-        return 3
-
-    try:
-        projector = DepthProjector(config["geometry"])
-        landmarker = FaceLandmarkerDetector(config["mediapipe"], module_dir)
-        estimator = FaceGeometryEstimator(config["geometry"], projector)
+        camera = RealSenseRgbCamera(config["camera"])
+        detector = create_face_detector(config["detector"], module_dir)
+        estimator = ThreeDDFAPoseEstimator(config["three_ddfa"], module_dir)
         stabilizer = PoseStabilizer(config["filter"])
         visualizer = PoseVisualizer(
             config["visualization"],
-            normal_arrow_length_m=float(config["geometry"]["normal_arrow_length_m"]),
+            arrow_length_m=float(config["three_ddfa"].get("normal_arrow_length_m", 0.12)),
         )
         if args.pose_file:
             pose_file_writer = JsonPoseFileWriter(args.pose_file)
@@ -102,13 +88,19 @@ def main() -> int:
             udp_sender = UdpPoseSender(config["udp"])
     except Exception as exc:
         print(f"[init error] {exc}", file=sys.stderr)
-        camera.stop()
         return 2
 
-    if args.no_window:
+    print("Starting RealSense RGB + IMU streams...")
+    try:
+        camera.start()
+    except Exception as exc:
+        print(f"[camera error] {exc}", file=sys.stderr)
+        return 3
+
+    if args.no_window and visualizer is not None:
         visualizer.enabled = False
 
-    print("开始人脸位姿建模。按 q 退出窗口。")
+    print("Running 3DDFA_V2 face pose estimation. Press q in the OpenCV window to quit.")
     last_time = time.perf_counter()
     fps = 0.0
     processed_frames = 0
@@ -124,17 +116,13 @@ def main() -> int:
             last_time = now
             fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps > 0 else 1.0 / dt
 
-            timestamp_s = time.time()
-            timestamp_ms = int(time.monotonic() * 1000)
-            result = landmarker.detect(frame.color_bgr, timestamp_ms)
             pose = estimator.estimate(
-                result,
-                frame.color_bgr.shape,
-                frame.depth_frame,
+                frame.color_bgr,
                 frame.intrinsics,
-                timestamp_s,
+                detector,
+                timestamp=time.time(),
+                imu=frame.imu,
             )
-            pose = pose.copy_with(imu=frame.imu)
             pose = stabilizer.update(pose)
             processed_frames += 1
 
@@ -144,7 +132,7 @@ def main() -> int:
             if udp_sender is not None:
                 udp_sender.send(pose)
 
-            if visualizer.enabled:
+            if visualizer is not None and visualizer.enabled:
                 display = visualizer.draw(frame.color_bgr.copy(), pose, fps, frame.intrinsics)
                 if visualizer.show(display):
                     break
@@ -158,8 +146,6 @@ def main() -> int:
         return 4
     finally:
         camera.stop()
-        if landmarker is not None:
-            landmarker.close()
         if udp_sender is not None:
             udp_sender.close()
         if visualizer is not None and visualizer.enabled:
