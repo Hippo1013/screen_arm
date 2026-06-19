@@ -1,151 +1,83 @@
 # 开发记录
 
-## 当前项目目标
+## 当前权威状态（2026-06-19）
 
-构建一个基于 Intel RealSense D435i、MediaPipe Face Landmarker、OpenCV、NumPy、pyrealsense2 的 Python 端“人脸位姿建模模块”。该模块从 D435i RGB-D 视频流中估计人脸平面在相机坐标系下的位姿，并为后续 MATLAB 机器人运动学模块提供 UDP/JSON 输出。
+工作区：`E:\robotics\final_project\ws`
 
-当前阶段只进行工作区探查、技术方案整理和参数确认，不编写核心采集与建模代码。
+当前项目已经从早期方案整理推进到“人脸姿态模块 + 机械臂仿真联合测试”阶段。后续 agent 接手时，应以本节和根目录 `README.md` 为当前状态入口；下方按日期排列的内容是历史开发记录。
 
-## 工作区检查
+### 当前目录职责
 
-- 当前工作区：`E:\robotics\final_project\ws`
-- 已确认存在：`screen_arm/`
-- 处理原则：`screen_arm/` 为已有六自由度机械臂模型目录，当前阶段不移动、不重命名、不修改。
-- 当前尚未创建：`face_pose_module/`
+```text
+face_pose_module/      第一版人脸平面建模模块，使用 D435i RGB-D + MediaPipe
+face_pose_module_v2/   第二版人脸姿态模块，使用 D435i RGB + IMU + 3DDFA_V2
+screen_arm/            桌面屏幕支撑机械臂模型、URDF、CoppeliaSim 场景和 MATLAB 分析脚本
+test/                  第一版联合测试和固定人头目标位姿测试脚本
+test_v2/               第二版人脸模块 UDP 联合测试脚本
+test_v3/               当前推荐的带 Steve 小人可视化联合测试脚本
+```
 
-## 待确认的 D435i 相机启动参数
+### 当前推荐运行入口
 
-建议候选方案：
+MATLAB 联合测试优先运行：
 
-- `depth`: `848x480 @ 30fps`, format `z16`
-- `color`: 优先 `640x480 @ 30fps`, format `bgr8`
-- `color` 备选：`1280x720 @ 30fps`, format `bgr8`
-- `align_depth_to_color`: `true`
-- `infrared`: `false`
-- `IMU`: `false`
+```matlab
+addpath('test_v3', '-begin')
+demo_face_pose_screen_arm_live_follow_udp_avatar
+```
 
-需要用户确认：
+无相机调试模式：
 
-- depth 分辨率
-- depth 帧率
-- color 分辨率
-- color 帧率
-- depth 格式
-- color 格式
-- 是否启用 infrared
-- 是否启用 IMU
-- 是否将 depth 对齐到 color
+```matlab
+addpath('test_v3', '-begin')
+demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
+```
 
-## 待确认的 MediaPipe Face Landmarker 方案
+当前 v3 脚本仍是离散触发式跟随：先读取 UDP 最新帧，变化超过阈值时锁定该帧目标位姿，执行一次 IK 和关节空间轨迹；运动期间只刷新人脸/人物预览，不改变当前轨迹目标。
 
-建议候选方案：
+### 当前关键约定
 
-- 使用 `MediaPipe Face Landmarker`，不使用旧版 `Face Mesh`
-- `num_faces = 1`
-- 使用 `.task` 模型文件：`face_landmarker.task`
-- 模型文件建议放置在后续目录：`face_pose_module/assets/face_landmarker.task`
-- 启用 `output_facial_transformation_matrixes`
-- `output_face_blendshapes` 默认关闭，除非后续需要表情信息
-- 人脸中心点优先使用左右眼中心点的中点
-- 人脸平面拟合使用多个人脸三维关键点，不只使用鼻尖单点
-- 平面法向量由多个人脸三维关键点拟合得到
-- `x_axis` 由左右眼方向确定，用于后续 MATLAB 构造完整旋转矩阵
+- 固定人头/人脸参考点：`state.faceCenter = [0.65, 0.00, 1.00]`。
+- 名义人脸到屏幕中心距离：`state.viewDistance = 0.45`。
+- 可接受距离范围：`state.distanceRange = [0.30, 0.60]`。
+- v2 人脸模块输出中，MATLAB 联合脚本只依赖 `t`、`valid`、`normal`、`imu.accel`。
+- `face_pose_module_v2` 的 `center` 只作为兼容字段，不作为当前机器人控制的人头位置。
+- 仿真相机位置固定为 `screen_arm` 模型中深度相机示意模型中心；相机 `yaw` 和 `roll` 默认端正，`pitch` 由 IMU 加速度估计。
 
-需要用户确认：
+### 当前关键文档
 
-- 使用 `Face Landmarker` 还是旧版 `Face Mesh`
-- 使用哪个 `.task` 模型文件
-- 是否只检测单人脸
-- 是否开启 `facial transformation matrix`
-- 是否开启 `blendshapes`
-- 用哪些关键点建模人脸平面
-- 如何定义人脸中心点
-- 如何定义人脸法向量方向
+- `README.md`：项目总入口、模块结构和推荐运行方式。
+- `关键参数.md`：联合测试几何参数、现实摆放参考、距离范围。
+- `后续开发方向.md`：后续从离散触发式跟随升级到实时视觉伺服的设计方向。
+- `face_pose_module/README.md`：第一版 RGB-D + MediaPipe 人脸平面建模模块。
+- `face_pose_module_v2/README.md`：第二版 RGB + IMU + 3DDFA_V2 人脸姿态模块。
+- `screen_arm/README.md`：机械臂模型、URDF、CoppeliaSim 和 MATLAB 模型脚本。
 
-## 建议的人脸建模算法流程
+### 当前验证入口
+
+```powershell
+matlab -batch "issues=[checkcode('test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m'); checkcode('test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m')]; if isempty(issues), disp('checkcode clean'); else, disp(issues); error('checkcode reported issues'); end"
+```
+
+```powershell
+cd E:\robotics\final_project\ws\face_pose_module_v2
+conda activate screen_arm_v2
+python tests\import_smoke_test.py --load-model
+```
+
+## 2026-06-10 早期探索归档
+
+最初目标是构建基于 Intel RealSense D435i、MediaPipe Face Landmarker、OpenCV、NumPy、pyrealsense2 的 Python 端“人脸位姿建模模块”。早期只进行了工作区探查、技术方案整理和参数确认；当时记录中的“尚未创建 `face_pose_module/`”“不是 Git 仓库”等说法已经过期，不应作为当前状态依据。
+
+早期方案确定了第一版模块的基本路线：
 
 1. 从 D435i 获取 `color_frame` 和 `depth_frame`。
 2. 将 `depth_frame` 对齐到 `color_frame`。
-3. 使用 MediaPipe Face Landmarker 在彩色图像中检测人脸关键点。
-4. 将归一化关键点转换为二维像素坐标 `(u, v)`。
-5. 在对齐后的深度图中读取关键点深度 `Z`。
-6. 使用 `rs.rs2_deproject_pixel_to_point(intrinsics, [u, v], depth)` 反投影得到相机坐标系下三维点。
-7. 过滤无效深度、越界点和离群三维点。
-8. 使用最小二乘平面拟合或 RANSAC 拟合人脸平面。
-9. 使用左右眼中心点的中点作为 `face_center_camera`。
-10. 使用拟合平面法向量作为 `face_normal_camera`。
-11. 使用左右眼方向构造 `x_axis`。
-12. 对中心点、法向量和横向轴做稳定化处理。
-13. 输出 `valid`、`timestamp`、`center`、`normal`、`x_axis`。
-14. 在调试窗口中叠加显示彩色图、关键点、中心点、法向箭头、坐标、`valid` 和 FPS。
-15. 通过 UDP 将 JSON 数据发送到 `127.0.0.1:5005`，供 MATLAB 后续接收。
-
-## 稳定化方案
-
-建议实现以下机制，并将阈值写入后续 `config.yaml`：
-
-- 深度无效值过滤
-- 关键点离群值过滤
-- 最小可用三维点数量检查
-- 平面拟合残差阈值
-- 滑动平均滤波
-- 指数平滑滤波
-- 中心点死区阈值
-- 法向量角度死区阈值
-- 检测失败后的短时保持上一帧有效结果
-- `valid` 状态输出
-
-## 建议项目结构
-
-确认方案后再创建：
-
-```text
-face_pose_module/
-  README.md
-  requirements.txt
-  config.yaml
-  main.py
-  camera_realsense.py
-  face_landmarker.py
-  depth_projector.py
-  face_geometry.py
-  filters.py
-  udp_sender.py
-  visualizer.py
-  assets/
-    face_landmarker.task
-```
-
-## 已创建或修改的文件
-
-- `AGENT.md`：记录当前项目目标、探查结果、待确认参数、建议技术方案、后续开发记录。
-
-## 当前运行方式
-
-当前阶段尚未创建运行程序。待 D435i 参数和 MediaPipe 方案确认后，再创建 `face_pose_module/` 并提供运行命令。
-
-## 已测试的命令
-
-- `Get-ChildItem -Force`
-- `git status --short`
-
-## 已知问题
-
-- 当前工作区不是 Git 仓库，`git status --short` 返回 `fatal: not a git repository`。
-- 当前机器环境尚未验证是否已安装 `pyrealsense2`、`mediapipe`、`opencv-python`、`numpy`、`scipy`、`pyyaml`。
-- 当前未检测 RealSense 设备连接状态。
-- `face_landmarker.task` 模型文件尚未放入项目。
-
-## 后续待办
-
-1. 等待用户确认 D435i 启动参数。
-2. 等待用户确认 MediaPipe Face Landmarker 使用方式和关键点方案。
-3. 创建 `face_pose_module/` 目录。
-4. 编写模块化 Python 代码。
-5. 编写 `README.md`、`requirements.txt`、`config.yaml`。
-6. 实现实时可视化检查窗口。
-7. 实现或预留 UDP JSON 输出。
-8. 运行可用性检查并更新本文档。
+3. 使用 MediaPipe Face Landmarker 检测单人脸关键点。
+4. 将关键点反投影为相机坐标系三维点。
+5. 使用多个人脸三维点拟合人脸平面。
+6. 输出 `valid`、`timestamp`、`center`、`normal`、`x_axis`。
+7. 通过 OpenCV 窗口可视化，并通过 UDP JSON 发送到 `127.0.0.1:5005`。
 
 ## 2026-06-10 阶段更新：确认并实现第一版模块
 
@@ -1265,7 +1197,7 @@ Stop-Process -Id <PID> -Force
 - `timerTick()` 调用 `processLatestFacePose(fig, true)`；正常跟随时仍可按阈值触发规划。
 - 机械臂运动动画中调用 `processLatestFacePose(fig, false)`；运动期间继续读取 UDP 并更新小人头部/箭头，但不触发新的 IK。
 - Steve 小人、人脸方向箭头、屏幕目标点和距离参考线仍绘制在主仿真坐标轴 `ax` 内，保持与 PR 一致的 3D 场景呈现方式。
-- `animateJointTrajectory()` 在每个机械臂帧之间留出短时间读取 UDP 并刷新人脸预览；由于人物模型仍在主轴中，机械臂 `show(..., "PreservePlot", false)` 后仍需要重绘预览对象。
+- `animateJointTrajectory()` 在每个机械臂帧之间留出短时间读取 UDP 并刷新人脸预览。（初版每个机械臂帧都重建整个小人并依赖“show 后重绘”；该开销与依赖已在后续优化中移除，见下方 2026-06-19“test_v3 预览渲染优化”条目。）
 - `planAndMove()` 记录规划开始时的 `commandFaceNormal` 和 `commandTargetPoint`；如果运动过程中用户头部继续变化，运动结束后仍能基于新旧目标差异触发下一次规划。
 - 针对点击“开始跟随”后 MATLAB Robotics Toolbox 内部 `WindowMousePress` warning 伴随仿真视角跳变的问题，采用“软视角保护”：
   - `redrawRobot()` 每次调用机械臂 `show(..., "PreservePlot", false)` 前保存当前 axes 相机参数，重绘后恢复。
@@ -1311,3 +1243,48 @@ matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follo
 ```powershell
 matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follow_udp_avatar('large', false); fig=findall(0,'Type','figure','Name','Live Face Pose Screen Arm Follow UDP v3 Avatar'); st=guidata(fig); cb=st.followButton.Callback; cb([],[]); pause(1); figs=findall(0,'Type','figure'); close(figs); delete(timerfindall); disp('v3 soft-camera follow callback ok')"
 ```
+
+## 2026-06-19 文档整理记录
+
+本次整理目标是让项目根目录文档和 agent 记忆与当前代码状态对齐，避免早期记录中的过期状态误导后续开发。
+
+已更新：
+
+- `README.md`：重写为当前项目总入口，补充 `face_pose_module_v2`、`test_v2`、`test_v3`、推荐运行方式、关键脚本、关键参数和后续开发方向。
+- `关键参数.md`：适用范围从单个基础脚本扩展到 v2/v3 avatar 联合测试脚本，并补充 `state.viewDistance = 0.45`、`state.distanceRange = [0.30, 0.60]`。
+- `screen_arm/README.md`：补充 `face_screen_support_arm_depth_camera.urdf`，并说明与人脸姿态模块联动的脚本位于工作区根目录 `test/`、`test_v2/`、`test_v3/`。
+- `AGENT.md`：顶部改为 2026-06-19 当前权威状态，早期“尚未创建 face_pose_module”“不是 Git 仓库”等内容归档为历史，不再作为当前状态依据。
+
+未修改：
+
+- `face_pose_module_v2/third_party/3DDFA_V2/**/readme.md`：第三方上游文档，不纳入本项目文档整理范围。
+
+## 2026-06-19 阶段更新：test_v3 预览渲染优化与坐标轴残留修复
+
+本次只优化 `test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m` 的预览渲染与图元生命周期；控制逻辑（离散触发式跟随、IK、距离 fallback、目标变化阈值）保持不变。
+
+### 小人只建一次（性能）
+
+- 之前每次预览更新都 `deleteGraphics` 删掉全部图元再从零重建整个 Steve 小人（含 6×8×8 = 384 面片的头部网格和每帧重算的贴图），跟随/运动时约 18 Hz 触发，是卡顿主因。
+- 现在 Steve 凳子、身体、头部网格、相机标记、人头标记/文字在 `ensurePreviewStatics()` 中只构建一次。
+- 每帧只做两件轻量事：`updateHeadOrientation()` 改头部 `hgtransform` 的 `Matrix`（等价于“把现成的头拧一个角度”）；`refreshTargetOverlay()` 重建约 8 个廉价图元（法向/目标三轴箭头、目标点、距离参考线、距离文字）。
+- `steveHeadMesh()` / `steveHeadTextures()` 加 `persistent` 记忆化，任何重建路径也几乎零成本。
+
+### 渲染依赖 hold on（关键约定，改 test_v3 渲染前必读）
+
+- MATLAB 的 `show(robot, ...)` 只在坐标轴 `hold off` 时建立场景光源；`hold on` 时则保留同轴上的其它图元。实测：hold off → 1 个 light、小人被 `show` 删除；hold on → 0 个 light、小人保留。
+- 因此 test_v3 次序固定为：**第一次 `redrawRobot` 在 `hold off` 下执行（让 `show` 建立桌子/机械臂光影），随后整段会话保持 `hold(ax, "on")`**，使后续 `show(..., "FastUpdate", true)` 既就地更新机械臂又不删除小人/overlay，且机械臂无重影。
+- 这条取代了上面初版 test_v3 记录里“show 后需要重绘预览对象”的说法——现在小人持久存在，不再每帧重绘。
+
+### 重入锁修复“卡住的目标坐标轴”
+
+- 现象：第一次点击“开始跟随”后，第一帧的目标位姿坐标轴永久停留在画面中，新目标坐标轴则正常移动（画面同时存在一静一动两组三轴箭头）。
+- 根因：`updateTargetPreview()` 末尾 `drawnow`（及 `redrawRobot` 内的 `drawnow`）期间定时器会重入再跑一遍预览更新；两次刷新交叉时，较旧的 `state` 副本把 overlay 句柄列表覆盖回去，使那一帧 overlay 句柄“失联”再也删不掉。
+- 修复：`updateTargetPreview()` 用 `state.previewBusy` + `onCleanup` 做重入锁，正在刷新时定时器触发的嵌套刷新直接跳过（下一拍用最新法向重画）；`onCleanup` 保证中途报错也会解锁。
+- 备注：曾尝试“给 overlay 打 Tag 后每次 `delete(findall(...))` 全清”的方案，但重入时会删掉另一次正在构造的 `quiver` 对象导致崩溃，故放弃治标、改用上面的重入锁治本。
+
+### 验证
+
+- `checkcode` clean。
+- 无相机启动烟测、“开始跟随”回调烟测通过（默认目标 IK `success`，`0.45 m` 可达）。
+- 后台持续灌 UDP 的并发压力测试：修复前目标坐标轴箭头持续累积（卡住残留），修复后恒为 `4`（1 法向 + 3 坐标轴）且全部随实时目标移动；光影保留；小人头部句柄复用、无图元泄漏。

@@ -117,7 +117,11 @@ state.startFaceModule = startFaceModule;
 state.pythonProcess = [];
 state.pythonExitReported = false;
 state.updateTimer = [];
-state.graphicsHandles = gobjects(0);
+% Persistent avatar/camera graphics are built once; only the head transform
+% and the lightweight target overlay change frame-to-frame.
+state.avatar = emptyAvatarHandles();
+state.targetHandles = gobjects(0);
+state.previewBusy = false;
 state.previewUpdateIntervalSeconds = 0.020;
 state.lastPreviewUpdateSeconds = -Inf;
 state.lastTargetTform = eye(4);
@@ -130,7 +134,11 @@ state.windowLayout = layout;
 
 guidata(fig, state);
 createControls(fig, panel);
+% First show() runs with hold off so it sets up scene lighting (the desk/arm
+% shading). Then hold on for the rest of the session so later show(...,
+% "FastUpdate", true) calls keep both the light and the persistent avatar.
 redrawRobot(fig);
+hold(ax, "on")
 updateTargetPreview(fig);
 assignTargetToBase(fig);
 
@@ -718,25 +726,99 @@ end
 
 function updateTargetPreview(fig)
 state = guidata(fig);
+
+% Re-entrancy lock. drawnow here (and inside redrawRobot) lets the timer fire
+% and call back into this function. A nested repaint races on the overlay
+% handle bookkeeping and can leave the first target frame frozen on screen, so
+% skip nested calls; the next tick repaints with the latest face normal anyway.
+if state.previewBusy
+    return
+end
+state.previewBusy = true;
+guidata(fig, state);
+guard = onCleanup(@() clearPreviewBusy(fig)); % reset lock on any exit (incl. error)
+
 cameraState = captureAxesCamera(state.ax);
-deleteGraphics(state.graphicsHandles);
 
 [targetTform, targetPoint, faceNormal] = buildTargetTformFromNormal( ...
     state.faceCenter, state.targetDistance, state.faceNormalWorld);
 state.lastTargetTform = targetTform;
 state.lastTargetPoint = targetPoint;
-
-mainHandles = drawTargetPreviewOnAxes(state.ax, state, targetTform, targetPoint, faceNormal, true);
-state.graphicsHandles = mainHandles;
-restoreAxesCamera(state.ax, cameraState);
-
 guidata(fig, state);
+
+% The avatar and camera marker are built once; per update we only re-pose the
+% head (an hgtransform Matrix swap) and rebuild the lightweight target overlay.
+ensurePreviewStatics(fig);
+updateHeadOrientation(fig, faceNormal);
+refreshTargetOverlay(fig, targetTform, targetPoint, faceNormal);
+
+restoreAxesCamera(state.ax, cameraState);
 drawnow limitrate
 end
 
-function handles = drawTargetPreviewOnAxes(ax, state, targetTform, targetPoint, faceNormal, includeLabels)
-handles = gobjects(0);
+function clearPreviewBusy(fig)
+if ~isvalid(fig)
+    return
+end
+state = guidata(fig);
+state.previewBusy = false;
+guidata(fig, state);
+end
+
+function ensurePreviewStatics(fig)
+% Build the parts that never change frame-to-frame: stool, body, head mesh,
+% camera marker, head-point marker and its label. Rebuild only if missing.
+state = guidata(fig);
+if avatarStaticsValid(state.avatar)
+    return
+end
+
+deleteAvatarHandles(state.avatar);
+ax = state.ax;
 if ~isgraphics(ax)
+    return
+end
+
+headCenter = state.faceCenter;
+headSize = state.steveHeadSize;
+
+avatar = emptyAvatarHandles();
+avatar.stool = drawSteveStool(ax, headCenter, headSize);
+avatar.body = drawSteveBody(ax, headCenter, headSize);
+avatar.head = drawSteveHead(ax, headCenter, state.faceNormalWorld, headSize);
+avatar.cameraMarker = plot3(ax, ...
+    state.cameraPositionWorld(1), state.cameraPositionWorld(2), state.cameraPositionWorld(3), ...
+    "^", "MarkerSize", 7, "MarkerFaceColor", [0.20, 0.20, 0.20], "MarkerEdgeColor", "k");
+avatar.headMarker = plot3(ax, headCenter(1), headCenter(2), headCenter(3), ...
+    "o", "MarkerSize", 9, "MarkerFaceColor", [0.90, 0.10, 0.10], "MarkerEdgeColor", "k");
+avatar.headLabel = text(ax, headCenter(1), headCenter(2), headCenter(3) + 0.80 * headSize, ...
+    "head/face point", "Color", [0.55, 0.05, 0.05], "FontWeight", "bold");
+avatar.built = true;
+
+state.avatar = avatar;
+guidata(fig, state);
+end
+
+function updateHeadOrientation(fig, faceNormal)
+% Re-pose the persistent head by swapping its hgtransform Matrix only.
+state = guidata(fig);
+if isfield(state, "avatar") && isgraphics(state.avatar.head)
+    state.avatar.head.Matrix = avatarTransform(state.faceCenter, faceNormal);
+end
+end
+
+function refreshTargetOverlay(fig, targetTform, targetPoint, faceNormal)
+% Recreate only the cheap, frequently changing primitives (arrows, target
+% markers, distance band, labels). The expensive avatar stays untouched.
+% updateTargetPreview holds a re-entrancy lock, so this never runs nested and
+% state.targetHandles always tracks exactly the current overlay to delete.
+state = guidata(fig);
+deleteGraphics(state.targetHandles);
+state.targetHandles = gobjects(0);
+
+ax = state.ax;
+if ~isgraphics(ax)
+    guidata(fig, state);
     return
 end
 
@@ -754,57 +836,70 @@ yAxis = targetTform(1:3, 2);
 zAxis = targetTform(1:3, 3);
 axisLength = state.targetAxisArrowLength;
 
-labelCount = 2 * double(includeLabels);
-hold(ax, "on")
-avatarHandles = drawSteveAvatarOnAxes(ax, headPoint, faceNormal, state.steveHeadSize);
-targetHandles = gobjects(9 + labelCount, 1);
-
-targetHandles(1) = plot3(ax, headPoint(1), headPoint(2), headPoint(3), ...
-    "o", "MarkerSize", 9, "MarkerFaceColor", [0.90, 0.10, 0.10], "MarkerEdgeColor", "k");
-targetHandles(2) = quiver3(ax, headPoint(1), headPoint(2), headPoint(3), ...
+handles = gobjects(8, 1);
+handles(1) = quiver3(ax, headPoint(1), headPoint(2), headPoint(3), ...
     faceNormal(1) * state.faceNormalArrowLength, ...
     faceNormal(2) * state.faceNormalArrowLength, ...
     faceNormal(3) * state.faceNormalArrowLength, ...
     0, "LineWidth", 2.2, "Color", [0.90, 0.10, 0.10], "MaxHeadSize", 0.45);
-targetHandles(3) = plot3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(2) = plot3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     "s", "MarkerSize", 8, "MarkerFaceColor", targetColor, "MarkerEdgeColor", "k");
-targetHandles(4) = plot3(ax, ...
+handles(3) = plot3(ax, ...
     [headPoint(1), targetPoint(1)], ...
     [headPoint(2), targetPoint(2)], ...
     [headPoint(3), targetPoint(3)], ...
     "--", "Color", [0.95, 0.72, 0.05], "LineWidth", 1.6);
-targetHandles(5) = plot3(ax, ...
+handles(4) = plot3(ax, ...
     [nearPoint(1), farPoint(1)], ...
     [nearPoint(2), farPoint(2)], ...
     [nearPoint(3), farPoint(3)], ...
     "-", "Color", [0.15, 0.15, 0.15], "LineWidth", 2.0);
-targetHandles(6) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(5) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     xAxis(1) * axisLength, xAxis(2) * axisLength, xAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.85, 0.10, 0.10], "MaxHeadSize", 0.8);
-targetHandles(7) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(6) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     yAxis(1) * axisLength, yAxis(2) * axisLength, yAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.05, 0.55, 0.16], "MaxHeadSize", 0.8);
-targetHandles(8) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
+handles(7) = quiver3(ax, targetPoint(1), targetPoint(2), targetPoint(3), ...
     zAxis(1) * axisLength, zAxis(2) * axisLength, zAxis(3) * axisLength, ...
     0, "LineWidth", 2.0, "Color", [0.05, 0.25, 0.90], "MaxHeadSize", 0.8);
-targetHandles(9) = plot3(ax, state.cameraPositionWorld(1), state.cameraPositionWorld(2), state.cameraPositionWorld(3), ...
-    "^", "MarkerSize", 7, "MarkerFaceColor", [0.20, 0.20, 0.20], "MarkerEdgeColor", "k");
-if includeLabels
-    targetHandles(10) = text(ax, headPoint(1), headPoint(2), headPoint(3) + 0.80 * state.steveHeadSize, ...
-        "head/face point", "Color", [0.55, 0.05, 0.05], "FontWeight", "bold");
-    targetHandles(11) = text(ax, targetPoint(1), targetPoint(2), targetPoint(3) + 0.05, ...
-        sprintf("target %.2f m", state.targetDistance), ...
-        "Color", targetColor, "FontWeight", "bold");
-end
-hold(ax, "off")
-handles = [avatarHandles(:); targetHandles(:)];
+handles(8) = text(ax, targetPoint(1), targetPoint(2), targetPoint(3) + 0.05, ...
+    sprintf("target %.2f m", state.targetDistance), ...
+    "Color", targetColor, "FontWeight", "bold");
+
+state.targetHandles = handles;
+guidata(fig, state);
 end
 
-function handles = drawSteveAvatarOnAxes(ax, headCenter, faceNormal, headSize)
-handles = gobjects(3, 1);
-handles(1) = drawSteveStool(ax, headCenter, headSize);
-handles(2) = drawSteveBody(ax, headCenter, headSize);
-handles(3) = drawSteveHead(ax, headCenter, faceNormal, headSize);
+function avatar = emptyAvatarHandles()
+avatar = struct( ...
+    "stool", gobjects(1), ...
+    "body", gobjects(1), ...
+    "head", gobjects(1), ...
+    "cameraMarker", gobjects(1), ...
+    "headMarker", gobjects(1), ...
+    "headLabel", gobjects(1), ...
+    "built", false);
+end
+
+function tf = avatarStaticsValid(avatar)
+tf = isstruct(avatar) && isfield(avatar, "built") && avatar.built && ...
+    isgraphics(avatar.stool) && isgraphics(avatar.body) && ...
+    isgraphics(avatar.head) && isgraphics(avatar.cameraMarker) && ...
+    isgraphics(avatar.headMarker) && isgraphics(avatar.headLabel);
+end
+
+function deleteAvatarHandles(avatar)
+if ~isstruct(avatar)
+    return
+end
+fields = ["stool", "body", "head", "cameraMarker", "headMarker", "headLabel"];
+for i = 1:numel(fields)
+    name = fields(i);
+    if isfield(avatar, name)
+        deleteGraphics(avatar.(name));
+    end
+end
 end
 
 function handle = drawSteveStool(ax, headCenter, headSize)
@@ -941,6 +1036,16 @@ end
 end
 
 function [vertices, faces, colors] = steveHeadMesh(headSize)
+% Geometry depends only on headSize, so memoize it: the 384-quad textured
+% head is built at most once per size instead of on every preview update.
+persistent cacheSize cacheVertices cacheFaces cacheColors
+if ~isempty(cacheSize) && cacheSize == headSize
+    vertices = cacheVertices;
+    faces = cacheFaces;
+    colors = cacheColors;
+    return
+end
+
 textures = steveHeadTextures();
 vertices = zeros(0, 3);
 faces = zeros(0, 4);
@@ -952,6 +1057,11 @@ colors = zeros(0, 3);
 [vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.right, "right", headSize);
 [vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.top, "top", headSize);
 [vertices, faces, colors] = appendSteveFace(vertices, faces, colors, textures.bottom, "bottom", headSize);
+
+cacheSize = headSize;
+cacheVertices = vertices;
+cacheFaces = faces;
+cacheColors = colors;
 end
 
 function [vertices, faces, colors] = appendSteveFace(vertices, faces, colors, texture, faceName, headSize)
@@ -991,6 +1101,13 @@ end
 end
 
 function textures = steveHeadTextures()
+% Texture atlas is constant; build it once and reuse the cached struct.
+persistent cachedTextures
+if ~isempty(cachedTextures)
+    textures = cachedTextures;
+    return
+end
+
 symbols = "ABCDEF GHIJKLMNPQW";
 colors = [
     0.12 0.065 0.025  % A hair nearly black
@@ -1086,6 +1203,7 @@ textures = struct( ...
     "right", right, ...
     "top", top, ...
     "bottom", bottom);
+cachedTextures = textures;
 end
 
 function image = textureFromRows(rows, symbols, colors)
@@ -1743,6 +1861,11 @@ if isfield(state, "udpPoseReceiver")
     closeUdpPoseReceiver(state.udpPoseReceiver);
 end
 
-deleteGraphics(state.graphicsHandles);
+if isfield(state, "avatar")
+    deleteAvatarHandles(state.avatar);
+end
+if isfield(state, "targetHandles")
+    deleteGraphics(state.targetHandles);
+end
 delete(fig);
 end

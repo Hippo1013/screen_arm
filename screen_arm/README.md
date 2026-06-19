@@ -17,12 +17,13 @@ coppeliasim/face_screen_support_arm_scene.ttt
 ```text
 coppeliasim/face_screen_support_arm_scene.ttt  最终 CoppeliaSim 场景
 coppeliasim/face_screen_support_arm.ttm        机器人模型文件
-generated/urdf/face_screen_support_arm.urdf    URDF 模型
+generated/urdf/face_screen_support_arm.urdf    基础 URDF 模型
+generated/urdf/face_screen_support_arm_depth_camera.urdf  带深度相机示意模型的 URDF
 generated/meshes/*.stl                         连杆网格文件
 generated/step/*.step                          CAD STEP 文件
 generated/face_screen_arm.FCStd                FreeCAD 源文件
 scripts/                                       生成、导入和修正脚本
-test/*.m                                       MATLAB 分析与演示脚本
+test/*.m                                       本目录下的 MATLAB 分析与演示脚本
 ```
 
 ## 初始位姿
@@ -72,6 +73,13 @@ test/demo_face_screen_arm_motion_loop.m
 test/demo_face_screen_arm_target_pose.m
 test/analyze_face_screen_arm_workspace.m
 test/analyze_face_screen_arm_face_shell.m
+```
+
+与人脸姿态模块联动的 MATLAB 脚本位于工作区根目录的 `test/`、`test_v2/` 和 `test_v3/` 中。当前推荐的联合测试入口为：
+
+```matlab
+addpath('../test_v3', '-begin')
+demo_face_pose_screen_arm_live_follow_udp_avatar
 ```
 
 ### FreeCAD 生成模型
