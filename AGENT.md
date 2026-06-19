@@ -1075,3 +1075,239 @@ python tests\live_visual_snapshot_test.py --frames 120 --require-valid
 - 当前默认 `1280x720 @ 30fps`，实测 RGB + IMU 约 `18 FPS`；若实时性不足，可考虑降到 `848x480` 或 `640x480`。
 - 如果后续接入 MATLAB v2 联合 demo，应只改启动路径和环境到 `face_pose_module_v2/main.py` 与 `screen_arm_v2`，不要改机械臂模型。
 - 如果实测上下俯仰方向也反，再考虑开启或调整 `flip_output_y`；当前未默认翻转 Y。
+
+## 2026-06-19 阶段更新：v2 联合测试脚本加入小人头部可视化
+
+本阶段围绕 `test_v2` 的 v2 UDP 联合测试脚本做了一个带小人可视化的独立副本，用于在仿真中更直观显示测试人员头部朝向，同时保持原有控制逻辑稳定。
+
+### 外部 PR 变更理解
+
+已确认合并的 PR `#6 feature/steve-avatar-demo` 只修改了：
+
+- `test/demo_face_view_target_ik_trajectory.m`
+
+该 PR 的主要做法：
+
+- 在 MATLAB 脚本中用 `patch` 和 `hgtransform` 程序化绘制 Steve 风格小人、身体和椅子，不是新增 URDF。
+- 小人头部贴图使用 8x8 方格纹理函数生成，包含 `steveHeadTextures()`、`textureFromRows()`、`appendSteveFace()` 等函数。
+- PR 原 demo 中引入了 `headPivot` 概念：头部旋转中心固定，脸中心随头部方向略微移动。
+
+本项目当前 v2 联合测试没有采用 `headPivot` 让人脸中心随头移动的几何逻辑，而是继续使用固定点简化模型。
+
+### 新增脚本
+
+新增：
+
+- `test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m`
+
+来源：
+
+- 复制自 `test_v2/demo_face_pose_screen_arm_live_follow_udp.m`
+- 保留 v2 人脸姿态模块 UDP 输入链路。
+- 保留原脚本的逆运动学、距离 fallback、轨迹动画和目标变化阈值逻辑。
+- 仅新增 Steve 小人可视化层。
+
+运行方式：
+
+```matlab
+addpath('test_v2', '-begin')
+demo_face_pose_screen_arm_live_follow_udp_avatar
+```
+
+无相机模式：
+
+```matlab
+demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
+```
+
+### 固定点与人脸方向约定
+
+当前 `_avatar` 脚本继续采用简化模型：
+
+```matlab
+state.faceCenter = [0.65, 0.00, 1.00];
+```
+
+该点在脚本中同时作为：
+
+- 固定的人头/人脸参考点。
+- 人脸方向箭头的起点。
+- Steve 头部模型的旋转原点。
+- 屏幕目标点计算的基准点。
+
+目标屏幕点仍按以下逻辑计算：
+
+```matlab
+targetPoint = faceCenter + distance * faceNormalWorld;
+```
+
+也就是说，`face_pose_module_v2` 传来的 `normal` 只作为朝向输入；当前联合测试不使用 v2 输出的 `center` 做机器人位置控制。
+
+### Steve 小人可视化实现
+
+`_avatar` 脚本中新加的可视化函数包括：
+
+- `drawSteveAvatarOnAxes()`
+- `drawSteveStool()`
+- `drawSteveBody()`
+- `drawSteveHead()`
+- `drawSteveHeadBackfill()`
+- `steveHeadMesh()`
+- `appendSteveFace()`
+- `steveHeadTextures()`
+- `textureFromRows()`
+- `steveHeadOutlineVertices()`
+- `steveHeadOutlineFaces()`
+- `avatarTransform()`
+
+头部贴图已改为沿用 PR 中一模一样的 8x8 Steve 头部贴图逻辑。
+
+头部朝向：
+
+- `drawSteveHead()` 使用 `faceNormalWorld` 构造头部姿态矩阵。
+- 头部会跟随人脸方向向量转动。
+- 身体和椅子保持固定，只作为坐姿参照，不参与 IK 或碰撞。
+
+### 当前显示参数
+
+人脸方向箭头长度已从 `0.15 m` 增加到：
+
+```matlab
+state.faceNormalArrowLength = 0.18;
+```
+
+该参数只影响可视化箭头长度，不影响屏幕目标距离或 IK。
+
+Steve 头部尺寸：
+
+```matlab
+state.steveHeadSize = 0.22;
+```
+
+为改善身体和头部之间的视觉间距，已小幅调高椅子和身体：
+
+- 椅子凳面：`seatTop = scale * -0.385`
+- 身体腿部参考高度：`legCenterZ = scale * -0.355`
+- 身体躯干和手臂相对头部同步上移。
+
+### 距离 fallback 范围更新
+
+为了给机械臂更大的工作空间，`_avatar` 脚本中人脸到屏幕中心的可接受距离范围已从 `0.35-0.55 m` 扩展为：
+
+```matlab
+state.distanceRange = [0.30, 0.60];
+```
+
+名义目标距离仍然是：
+
+```matlab
+state.viewDistance = 0.45;
+```
+
+求解策略保持不变：
+
+1. 先尝试 `0.45 m`。
+2. 如果不可达，再在 `0.30-0.60 m` 范围内按距离 `0.45 m` 由近到远的顺序搜索 fallback。
+
+UI 文案已同步为 `Distance: try 0.45 m first, accept 0.30-0.60 m`。
+不可达提示已改为动态读取 `state.distanceRange`，避免后续改范围时遗留旧数字。
+
+### 验证记录
+
+已执行 MATLAB 静态检查：
+
+```powershell
+matlab -batch "addpath('test_v2','-begin'); checkcode('test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m','-id')"
+```
+
+结果：无输出问题。
+
+已执行无相机启动烟测：
+
+```powershell
+matlab -batch "addpath('test_v2','-begin'); demo_face_pose_screen_arm_live_follow_udp_avatar('large', false); pause(1); figs=findall(0,'Type','figure'); close(figs); delete(timerfindall); disp('avatar texture smoke ok')"
+```
+
+结果：脚本可启动、绘制小人和仿真窗口，并正常关闭。测试中出现过临时日志文件删除相关 warning，不影响 `_avatar` 脚本逻辑。
+
+### 运行与清理注意事项
+
+运行联调脚本时，MATLAB 会启动 `face_pose_module_v2/main.py` 并显示 OpenCV 相机窗口，窗口标题通常为：
+
+```text
+3DDFA_V2 Face Pose Debug
+```
+
+如果相机画面窗口无法关闭，可在 PowerShell 中查找并结束对应 Python 进程：
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'face_pose_module_v2|3DDFA' }
+Stop-Process -Id <PID> -Force
+```
+
+已确认一次卡住窗口对应进程为 `face_pose_module_v2/main.py`，结束该 Python 进程即可关闭相机画面，不需要关闭 MATLAB 主进程。
+
+### 2026-06-19 追加：`test_v3` 解耦预览版本
+
+为解决点击“开始跟随”后小人头部和人脸方向箭头变成一帧一帧刷新的问题，新增目录：
+
+- `test_v3/`
+
+新增脚本：
+
+- `test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m`
+
+该脚本复制自 `test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m`，并做以下关键调整：
+
+- MATLAB 窗口名改为 `Live Face Pose Screen Arm Follow UDP v3 Avatar`。
+- Python 日志文件改为 `%TEMP%/screen_arm_face_pose_live_udp_v3.log`。
+- 新增 `processLatestFacePose(fig, allowPlanning)`，把“读取 UDP 并更新人脸预览”和“触发 IK 规划”拆开。
+- `timerTick()` 调用 `processLatestFacePose(fig, true)`；正常跟随时仍可按阈值触发规划。
+- 机械臂运动动画中调用 `processLatestFacePose(fig, false)`；运动期间继续读取 UDP 并更新小人头部/箭头，但不触发新的 IK。
+- Steve 小人、人脸方向箭头、屏幕目标点和距离参考线仍绘制在主仿真坐标轴 `ax` 内，保持与 PR 一致的 3D 场景呈现方式。
+- `animateJointTrajectory()` 在每个机械臂帧之间留出短时间读取 UDP 并刷新人脸预览；由于人物模型仍在主轴中，机械臂 `show(..., "PreservePlot", false)` 后仍需要重绘预览对象。
+- `planAndMove()` 记录规划开始时的 `commandFaceNormal` 和 `commandTargetPoint`；如果运动过程中用户头部继续变化，运动结束后仍能基于新旧目标差异触发下一次规划。
+- 针对点击“开始跟随”后 MATLAB Robotics Toolbox 内部 `WindowMousePress` warning 伴随仿真视角跳变的问题，采用“软视角保护”：
+  - `redrawRobot()` 每次调用机械臂 `show(..., "PreservePlot", false)` 前保存当前 axes 相机参数，重绘后恢复。
+  - `updateTargetPreview()` 在预览对象删除/重绘前保存当前 axes 相机参数，重绘后恢复。
+  - 不再使用运动开始时固定不变的 `lockedCameraState`，因此用户在跟随过程中仍可手动旋转视角观察。
+  - `captureAxesCamera()` 不再要求 `ax.Children` 非空，避免重绘间隙捕获失败。
+
+v3 运行方式：
+
+```matlab
+addpath('test_v3', '-begin')
+demo_face_pose_screen_arm_live_follow_udp_avatar
+```
+
+v3 无相机模式：
+
+```matlab
+demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
+```
+
+已验证：
+
+```powershell
+matlab -batch "addpath('test_v3','-begin'); checkcode('test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m','-id')"
+```
+
+无输出问题。
+
+无相机启动烟测通过：
+
+```powershell
+matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follow_udp_avatar('large', false); pause(1); figs=findall(0,'Type','figure'); close(figs); delete(timerfindall); disp('v3 smoke ok')"
+```
+
+无相机“开始跟随”回调烟测通过，默认目标 IK `success`，`0.45 m` 可达：
+
+```powershell
+matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follow_udp_avatar('large', false); fig=findall(0,'Type','figure','Name','Live Face Pose Screen Arm Follow UDP v3 Avatar'); st=guidata(fig); cb=st.followButton.Callback; cb([],[]); pause(1); figs=findall(0,'Type','figure'); close(figs); delete(timerfindall); disp('v3 follow callback ok')"
+```
+
+软视角保护后的无相机“开始跟随”回调烟测通过：
+
+```powershell
+matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follow_udp_avatar('large', false); fig=findall(0,'Type','figure','Name','Live Face Pose Screen Arm Follow UDP v3 Avatar'); st=guidata(fig); cb=st.followButton.Callback; cb([],[]); pause(1); figs=findall(0,'Type','figure'); close(figs); delete(timerfindall); disp('v3 soft-camera follow callback ok')"
+```
