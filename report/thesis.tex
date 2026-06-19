@@ -1,0 +1,128 @@
+% !TeX program = xelatex
+
+\PassOptionsToPackage{quiet}{fontspec}
+\documentclass[12pt,a4paper,UTF8]{article}
+\usepackage{thesis} % 格式控制
+\usepackage{indentfirst}
+\setlength{\parindent}{2em} % 控制首行缩进  
+\addtolength{\parskip}{3pt} % 控制段落距离  
+\onehalfspacing % 1.5倍行距  
+\graphicspath{{./figures/}} % 指定图片所在文件夹  
+
+
+\course{机器人学}
+\studentname{曹航硕、吴翱臣、康祺}
+\studentid{}
+\memberone{曹航硕（3240101938）}
+\membertwo{吴翱臣（3240106219）}
+\memberthree{康祺（3240101043）}
+\college{}
+\major{}
+\instructor{李高峰}
+\grade{}
+\experimentdate{}
+\makepagestyle{}{}
+
+
+
+
+\begin{document}
+\maketitlepage % 封面页
+
+\maketoc    %目录页
+\section{任务需求}
+
+随着计算机在科研、工程开发和日常学习中的深度普及，高校学生、研究员、开发者等技术人员往往需要长时间保持坐姿并持续面对电脑屏幕。长期低头、前伸颈部或以不对称姿态观察屏幕，容易使颈椎、肩部和背部长期处于非自然受力状态。对于高强度脑力工作场景而言，屏幕位置是否能够匹配用户当前的身体姿态，直接影响工作舒适性、持续工作能力以及长期健康风险。
+
+传统电脑屏幕通常固定摆放在桌面上，或安装在只能由人工调节的机械臂支架上。这类方案虽然能够在初始安装时调整高度、俯仰角和水平位置，但在实际使用过程中并不能主动感知用户姿态变化，也无法根据用户头部朝向和视线方向实时调整屏幕位姿。因此，用户往往需要主动去适应屏幕的位置：当坐姿发生变化、椅背角度改变、身体前后移动，甚至从坐姿切换到站姿时，屏幕与人眼之间的相对位置和朝向都可能偏离合适范围。
+
+本项目的任务需求是设计一套能够根据用户姿态自动调整电脑屏幕位姿的机器人支架系统。系统应通过感知模块获取用户人脸姿态信息，并驱动机械臂式屏幕支架调整末端屏幕的位置与朝向，使屏幕在一定工作空间内尽可能保持正对用户视线并维持合适观看距离。若进一步搭配可自由调节坐姿的人体工学椅，该系统可覆盖用户在大多数坐姿、半躺姿态以及一定站姿场景下的屏幕观看需求，从而减少用户为适应屏幕而产生的不良颈部和躯干姿态。
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{海报.png}
+\end{figure}
+
+\clearpage
+\section{总体方案}
+
+本项目的总体思路是将“用户姿态感知”和“机械臂屏幕调节”结合起来，形成一个能够根据人脸朝向自动调整屏幕位姿的桌面机器人系统。系统希望屏幕中心大致位于用户视线方向上，同时让屏幕平面尽量正对用户，从而减少用户主动适应屏幕位置的负担。
+
+系统主要包括人脸姿态建模、坐标变换与目标位姿计算、机械臂运动控制和仿真验证几个部分。深度相机负责获取用户人脸相对于相机坐标系的位姿信息；程序再结合相机在仿真环境中的安装位置和姿态，将该信息转换到世界坐标系中；之后根据人脸方向和合适观看距离计算屏幕目标位姿，并通过逆运动学和轨迹规划指导机械臂运动。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.1cm,
+        flow/.style={
+            rectangle,
+            rounded corners=3pt,
+            draw=blue!55!black,
+            fill=blue!5,
+            very thick,
+            align=center,
+            minimum width=0.72\textwidth,
+            minimum height=1.0cm,
+            font=\small
+        },
+        arrow/.style={-{Stealth[length=3mm]}, very thick, draw=blue!60!black}
+    ]
+        \node[flow] (camera) {深度相机采集用户面部图像\\输出人脸相对相机坐标系位姿 ${}^{C}\mathbf{T}_{F}$};
+        \node[flow, below=of camera] (transform) {结合相机安装位姿 ${}^{W}\mathbf{T}_{C}$\\计算人脸在世界坐标系下的位姿 ${}^{W}\mathbf{T}_{F}$};
+        \node[flow, below=of transform] (target) {根据人脸方向 $\mathbf{n}_{F}^{W}$ 和观看距离 $d$\\计算屏幕末端目标位姿 ${}^{W}\mathbf{T}_{E}^{*}$};
+        \node[flow, below=of target] (ik) {逆运动学求解\\由 ${}^{W}\mathbf{T}_{E}^{*}$ 得到目标关节量 $\mathbf{q}^{*}$};
+        \node[flow, below=of ik] (traj) {轨迹规划与实时控制\\生成关节运动轨迹 $\mathbf{q}(t)$ 并驱动机械臂};
+        \node[flow, below=of traj] (screen) {屏幕到达目标位姿 ${}^{W}\mathbf{T}_{E}\rightarrow{}^{W}\mathbf{T}_{E}^{*}$\\尽量保持正对用户视线};
+
+        \draw[arrow] (camera) -- (transform);
+        \draw[arrow] (transform) -- (target);
+        \draw[arrow] (target) -- (ik);
+        \draw[arrow] (ik) -- (traj);
+        \draw[arrow] (traj) -- (screen);
+        \draw[arrow] (screen.east) -- ++(0.7,0) |- node[pos=0.25, right, align=center, font=\small] {持续\\更新} (camera.east);
+    \end{tikzpicture}
+    \caption{系统闭环工作流程}
+\end{figure}
+
+整体而言，本项目最终形成的是一个“感知--计算--控制--验证”的闭环流程：相机持续感知人脸姿态，程序不断更新屏幕目标位姿，机械臂根据控制算法调整屏幕位置，仿真界面实时展示机械臂、屏幕和用户头部朝向的变化。通过这种方式，可以较直观地验证机器人屏幕支架在不同人脸朝向下的跟随效果。
+
+\clearpage
+\section{机械结构设计}
+
+\clearpage
+\section{运动学建模}
+
+\clearpage
+\section{动力学分析}
+
+\clearpage
+\section{驱动选型}
+
+\clearpage
+\section{控制系统设计}
+
+\clearpage
+\section{仿真验证}
+
+\clearpage
+\section{优化与总结}
+
+\clearpage
+
+% \appendix
+
+% \section{附录1：}
+
+% \begin{lstlisting}
+% \end{lstlisting}
+
+
+% \section{附录2：}
+% \reference
+
+
+
+
+
+
+\end{document}

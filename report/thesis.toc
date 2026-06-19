@@ -1,0 +1,9 @@
+\contentsline {section}{\numberline {1}任务需求}{1}{section.1}%
+\contentsline {section}{\numberline {2}总体方案}{2}{section.2}%
+\contentsline {section}{\numberline {3}机械结构设计}{3}{section.3}%
+\contentsline {section}{\numberline {4}运动学建模}{4}{section.4}%
+\contentsline {section}{\numberline {5}动力学分析}{5}{section.5}%
+\contentsline {section}{\numberline {6}驱动选型}{6}{section.6}%
+\contentsline {section}{\numberline {7}控制系统设计}{7}{section.7}%
+\contentsline {section}{\numberline {8}仿真验证}{8}{section.8}%
+\contentsline {section}{\numberline {9}优化与总结}{9}{section.9}%
