@@ -75,7 +75,14 @@ test/analyze_face_screen_arm_workspace.m
 test/analyze_face_screen_arm_face_shell.m
 ```
 
-与人脸姿态模块联动的 MATLAB 脚本位于工作区根目录的 `test/`、`test_v2/` 和 `test_v3/` 中。当前推荐的联合测试入口为：
+与人脸姿态模块联动的 MATLAB 脚本位于工作区根目录的 `test/`、`test_v2/`、`test_v3/` 和 `test_v4/` 中。当前推荐的实时连续跟随入口为：
+
+```matlab
+addpath('../test_v4', '-begin')
+demo_face_pose_screen_arm_realtime_servo_udp_avatar
+```
+
+`test_v3` 保留为离散触发式稳定对照组：
 
 ```matlab
 addpath('../test_v3', '-begin')

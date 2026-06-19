@@ -14,12 +14,27 @@ face_pose_module_v2/   第二版人脸姿态模块，使用 D435i RGB + IMU + 3D
 screen_arm/            桌面屏幕支撑机械臂模型、URDF、CoppeliaSim 场景和 MATLAB 分析脚本
 test/                  第一版联合测试和固定人头目标位姿测试脚本
 test_v2/               第二版人脸模块 UDP 联合测试脚本
-test_v3/               当前推荐的带 Steve 小人可视化联合测试脚本
+test_v3/               离散触发式跟随稳定对照脚本
+test_v4/               实时视觉伺服式连续跟随脚本
 ```
 
 ### 当前推荐运行入口
 
-MATLAB 联合测试优先运行：
+实时连续跟随联调优先运行：
+
+```matlab
+addpath('test_v4', '-begin')
+demo_face_pose_screen_arm_realtime_servo_udp_avatar
+```
+
+无相机调试模式：
+
+```matlab
+addpath('test_v4', '-begin')
+demo_face_pose_screen_arm_realtime_servo_udp_avatar("large", false)
+```
+
+`test_v3` 保留为离散触发式稳定对照组：
 
 ```matlab
 addpath('test_v3', '-begin')
@@ -35,6 +50,8 @@ demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
 
 当前 v3 脚本仍是离散触发式跟随：先读取 UDP 最新帧，变化超过阈值时锁定该帧目标位姿，执行一次 IK 和关节空间轨迹；运动期间只刷新人脸/人物预览，不改变当前轨迹目标。
 
+当前 v4 脚本是实时视觉伺服式跟随：单一 `timer` 以 `0.04 s` 周期读取最新 UDP 姿态，滤波目标法向量，用 DLS 雅可比速度伺服每拍走一小步，并对机械臂重绘降频。
+
 ### 当前关键约定
 
 - 固定人头/人脸参考点：`state.faceCenter = [0.65, 0.00, 1.00]`。
@@ -48,7 +65,7 @@ demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
 
 - `README.md`：项目总入口、模块结构和推荐运行方式。
 - `关键参数.md`：联合测试几何参数、现实摆放参考、距离范围。
-- `后续开发方向.md`：后续从离散触发式跟随升级到实时视觉伺服的设计方向。
+- `后续开发方向.md`：从离散触发式跟随升级到实时视觉伺服的设计方向和 v4 落地状态。
 - `face_pose_module/README.md`：第一版 RGB-D + MediaPipe 人脸平面建模模块。
 - `face_pose_module_v2/README.md`：第二版 RGB + IMU + 3DDFA_V2 人脸姿态模块。
 - `screen_arm/README.md`：机械臂模型、URDF、CoppeliaSim 和 MATLAB 模型脚本。
@@ -56,7 +73,7 @@ demo_face_pose_screen_arm_live_follow_udp_avatar("large", false)
 ### 当前验证入口
 
 ```powershell
-matlab -batch "issues=[checkcode('test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m'); checkcode('test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m')]; if isempty(issues), disp('checkcode clean'); else, disp(issues); error('checkcode reported issues'); end"
+matlab -batch "issues=[checkcode('test_v2/demo_face_pose_screen_arm_live_follow_udp_avatar.m'); checkcode('test_v3/demo_face_pose_screen_arm_live_follow_udp_avatar.m'); checkcode('test_v4/demo_face_pose_screen_arm_realtime_servo_udp_avatar.m')]; if isempty(issues), disp('checkcode clean'); else, disp(issues); error('checkcode reported issues'); end"
 ```
 
 ```powershell
@@ -1288,3 +1305,53 @@ matlab -batch "addpath('test_v3','-begin'); demo_face_pose_screen_arm_live_follo
 - `checkcode` clean。
 - 无相机启动烟测、“开始跟随”回调烟测通过（默认目标 IK `success`，`0.45 m` 可达）。
 - 后台持续灌 UDP 的并发压力测试：修复前目标坐标轴箭头持续累积（卡住残留），修复后恒为 `4`（1 法向 + 3 坐标轴）且全部随实时目标移动；光影保留；小人头部句柄复用、无图元泄漏。
+
+## 2026-06-19 阶段更新：test_v4 实时视觉伺服版本
+
+本阶段按 `test_v4_实时伺服开发方案.md` 新增 `test_v4/`，用于验证连续人脸姿态输入下的实时视觉伺服式跟随。`test_v3/` 未修改，继续作为离散触发式稳定对照组。
+
+新增文件：
+
+- `test_v4/demo_face_pose_screen_arm_realtime_servo_udp_avatar.m`
+- `test_v4/tools/fake_pose_sender.py`
+
+v4 架构：
+
+- 单一 MATLAB `timer`，`Period = 0.04 s`，`BusyMode = "drop"`。
+- `state.busy` 是唯一串行锁，覆盖 `controlTick`、`engageFollow` 和 `resetHome`；不再使用 v3 的独立预览锁。
+- 每拍读取 UDP 最新帧，只处理 `t > state.lastPoseTimestamp` 且 `valid=true` 的数据。
+- 目标法向量使用 slerp 死区、角速度限速和自适应插值；IMU 俯仰角使用 EMA 低通。
+- 目标位姿仍由 `buildTargetTformFromNormal` 构造，保持屏幕严格正立，不放松 roll。
+- 伺服内核使用 DLS 雅可比速度控制：`geometricJacobian` 行序为 `[角; 线]`，位姿误差和 `vDes` 也必须保持 `[e_ori; e_pos]`。
+- 关节限速由 `movingJointInfo(robot)` 自动识别关节类型：旋转关节用 `state.qdotMaxRev = deg2rad(70)`，棱柱关节用 `state.qdotMaxPris = 0.15 m/s`。
+- `state.manipW0` 运行时按首次可操作度 `w` 的 `15%` 自标定，奇异附近把 DLS 阻尼提高到 `state.lambdaMax`。
+- 接管时 `engageFollow` 先复用完整 IK 粗到位，再进入 `mode="servo"`；看门狗只在持续不收敛且速度触顶时排队触发一次粗到位恢复。
+- 机械臂 `show(...)` 每 `state.renderEvery = 2` 拍重绘一次；Steve 头部和目标 overlay 每拍轻量刷新。
+- 目标位姿 overlay 使用 `state.targetOverlayTag = "v4_target_overlay"` 给全部目标图元打 Tag；每次刷新前同时按 `state.targetHandles` 和 Tag 清理，避免接管第一帧目标坐标系句柄失联后永久残留。
+
+关键非显然点：
+
+- `q` 必须保持 `6x1` 列向量；第 4 关节是棱柱关节，单位是 `m`，不要硬编码限速位置，运行时用 `jointInfo.types == "prismatic"` 判断。
+- v4 的 `targetDistance` 第一版每拍回到 `state.viewDistance = 0.45`，距离 fallback 只用于接管粗到位，不做每拍 11 点搜索。
+- `test_v4/tools/fake_pose_sender.py` 仅用于无相机测试，可用 `sweep`、`step`、`jitter`、`invalid`、`farfield` 模式灌 UDP。
+- 如果画面里出现多个目标坐标系，先检查 `findall(st.ax,'Tag',char(st.targetOverlayTag))` 是否恒为 `8`；正常 overlay 由 1 个法向箭头、1 个目标点、1 条脸到目标虚线、1 条距离带、3 个目标坐标轴箭头和 1 个文字组成。
+
+验证记录：
+
+```powershell
+matlab -batch "cd('E:\robotics\final_project\ws'); issues = checkcode('test_v4\demo_face_pose_screen_arm_realtime_servo_udp_avatar.m','-id'); if ~isempty(issues), disp(issues); error('checkcode reported issues'); end"
+```
+
+```powershell
+matlab -batch "cd('E:\robotics\final_project\ws'); addpath('test_v4','-begin'); demo_face_pose_screen_arm_realtime_servo_udp_avatar('normal', false); pause(1.0); fig = evalin('base','realtimeServoFigure'); if isvalid(fig), close(fig); end"
+```
+
+```powershell
+python -m py_compile test_v4\tools\fake_pose_sender.py
+```
+
+目标 overlay 残留修复后追加验证：
+
+```powershell
+matlab -batch "cd('E:\robotics\final_project\ws'); addpath('test_v4','-begin'); demo_face_pose_screen_arm_realtime_servo_udp_avatar('normal', false); pause(0.5); fig = evalin('base','realtimeServoFigure'); st = guidata(fig); cb = st.followButton.Callback; cb([], []); pause(1.2); st = guidata(fig); overlayCount = numel(findall(st.ax,'Tag',char(st.targetOverlayTag))); fprintf('overlayCount=%d\n', overlayCount); if overlayCount ~= 8, error('unexpected overlay count'); end; if isvalid(fig), close(fig); end"
+```
