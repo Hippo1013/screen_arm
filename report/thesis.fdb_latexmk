@@ -1,10 +1,10 @@
 # Fdb version 4
-["xdvipdfmx"] 1781872811.61419 "thesis.xdv" "thesis.pdf" "thesis" 1781872816.73021 0
-  "thesis.xdv" 1781872811 46492 f053a8a76cdda99bbb5eb97a836cfb48 "xelatex"
+["xdvipdfmx"] 1781945641.48717 "thesis.xdv" "thesis.pdf" "thesis" 1781945649.71883 0
+  "thesis.xdv" 1781945641 279592 18348891b1bc623e4dd4d08d9ef2b5c6 "xelatex"
   (generated)
   "thesis.pdf"
   (rewritten before read)
-["xelatex"] 1781872807.79838 "thesis.tex" "thesis.xdv" "thesis" 1781872816.7119 0
+["xelatex"] 1781945637.44211 "thesis.tex" "thesis.xdv" "thesis" 1781945649.7024 0
   "d:/tex_live/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1758260661 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "d:/tex_live/texlive/2025/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1758262002 1528 7e12f4c0fcf5a072cebdcfbfc610f54c ""
   "d:/tex_live/texlive/2025/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1758260086 1004 54797486969f23fa377b128694d548df ""
@@ -112,6 +112,7 @@
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/ctex/ctexhook.sty" 1758260419 6505 33157acfddefdd8fd513e2308e07a435 ""
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/etoolbox/etoolbox.sty" 1758260591 46850 d87daedc2abdc653769a6f1067849fe0 ""
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/fancyhdr/fancyhdr.sty" 1758260614 31715 19e60610b63819fe670dfa1cd84a4e94 ""
+  "d:/tex_live/texlive/2025/texmf-dist/tex/latex/float/float.sty" 1758260650 6749 16d2656a1984957e674b149555f1ea1d ""
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty" 1758260665 164981 148a15871e0e3c3101b8203733535af2 ""
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec.cfg" 1758260665 549 c4adac819276241fea8eb79c5ab7b99e ""
   "d:/tex_live/texlive/2025/texmf-dist/tex/latex/fontspec/fontspec.sty" 1758260665 3755 4872b99d810c024f9c09bb1c62ffee3b ""
@@ -183,11 +184,19 @@
   "figures/char.png" 1781869339 113460 3a825b5cf270a1cc5798dfe2a26820f0 ""
   "figures/logo.png" 1781869339 161683 8c7386585a3e5dbbae69d43bec672a73 ""
   "figures/海报.png" 1781872102 2116623 fc19d259d0f366410ad3421945694066 ""
-  "thesis.aux" 1781872811 1431 c75f8a1d966369cc74056442517ef4b0 "xelatex"
-  "thesis.out" 1781872811 731 94b93f8dc4f5f5c2ce96255edd7c56ca "xelatex"
+  "figures/机械结构1.png" 1781936925 54605 090048f746e617a8f5aa0c4004bcbf42 ""
+  "figures/机械结构2.png" 1781936925 92661 33a4b7ab795d7b74a34cc919c0613b3b ""
+  "figures/目标位姿计算.png" 1781941118 97596 25054c97b17d1bed9e0f06219ad9ccea ""
+  "figures/逆运动学关节轨迹曲线.png" 1781944412 239724 3e1aca4ed8508b25dc3e15cd65a4812a ""
+  "figures/屏幕跟随示意.png" 1781943629 786587 9ae8582eb399bebac90155fddafc1c9e ""
+  "figures/人脸姿态到史蒂夫姿态的映射.png" 1781943373 710433 8b01baf91e78bafa04477788b9d77f57 ""
+  "figures/人脸姿态建模.png" 1781931049 1375368 597d25a1c2f41094607c12bef2edba49 ""
+  "figures/设定一个目标点来算轨迹.png" 1781944401 49102 d616d23d558b00414444bd93b06d2844 ""
+  "thesis.aux" 1781945641 4790 402d5b278543096893a949ac48cbacd3 "xelatex"
+  "thesis.out" 1781945641 3733 377e4bc9f11ea5aaf7737318243815cd "xelatex"
   "thesis.sty" 1781872491 8020 92ee8bca8d5b54e8e3e59fdd61e144d0 ""
-  "thesis.tex" 1781872799 5980 be732e4c2fcce516e2e40237a2bf1e85 ""
-  "thesis.toc" 1781872811 633 a627c9ae7751823f7fd0658dd741fb54 "xelatex"
+  "thesis.tex" 1781945632 43191 50ce560517f8b955fc79d9d832c9d72c ""
+  "thesis.toc" 1781945641 2925 e818210b508491e3adb126706fe3f060 "xelatex"
   (generated)
   "thesis.aux"
   "thesis.log"
